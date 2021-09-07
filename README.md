@@ -151,6 +151,19 @@ In addition if no return value is specified the current values of all the bindin
 
 There are starred forms of all these macros which bind sequentially, for a total of six macros.
 
+**`looping`**  and **`looping*`**  are looping constructs with implicit stepping: `(looping ((a 1) b) ...)` will bind `a` to `1` and `b` to `nil` and then the values of the last form in the body is used to step the values.  There is no termination clause, but there is an implicit block named `nil` around it all and the body is an implicit `tagbody` so you can leap around in the same way you can with `do` and so on.  You can also use `escaping`.  Declarations at the start of the body are lifted to where they belong.  Initial bindings are in parallel for `looping`, in serial for `looping*`.  Here's a program which is not known to halt for all arguments:
+
+```lisp
+(defun collatz (n)
+  (looping ((m n) (c 1))
+    (when (= m 1)
+      (return c))
+    (values (if (evenp m)
+                (/ m 2)
+              (1+ (* m 3)))
+            (+ c 1))))
+```
+
 **`escaping`** provides a general named escape construct.  `(escaping (<escaper> &rest <defaults>) ...)` binds `<escaper>` as a local function which will immediately return from `escaping`, returning either its arguments as multiple values, or the values of `<defaults>` as multiple values.  The forms in `<defaults>` are not evaluated if they are not used: if they are evaluated they're done in their lexical environment but in the dynamic environment where the escape function is called.
 
 `escaping` is obviously a shim around `(block ... (return-from ...) ...)` and there are the same constraints on scope that blocks have: you can't call the escape function once control has left the form which established it.

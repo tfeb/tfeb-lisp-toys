@@ -25,6 +25,7 @@
    #:do-passing #:do-passing*
    #:failing #:failing*
    #:do-failing #:do-failing*
+   #:looping #:looping*
    #:escaping))
 
 (in-package :org.tfeb.toys.simple-loops)
@@ -48,7 +49,9 @@
             (init (second clause))
             (stepper (third clause)))
            (otherwise
-            (error "bad clause ~S" clause))))))))
+            (error "bad clause ~S" clause))))
+        (t
+         (error "mutant clause ~S" clause))))))
 
 (defun expand-doing (clauses test values forms &key (sequential nil))
   (multiple-value-bind (vars inits steppers) (parse-clauses clauses)
@@ -144,6 +147,51 @@ around the form so (RETURN ...) will work."
 (defmacro do-failing* ((&rest clauses) &body forms)
   "Like PASSING but test is inverted and at the end, and binding is sequential"
   (expand-simple-loop clauses forms :negated t :test-at-end t :sequential t))
+
+(defun expand-looping (clauses decls/forms &key (sequential nil))
+  (let ((variables (mapcar (lambda (clause)
+                             (typecase clause
+                               (symbol clause)
+                               (cons
+                                (case (length clause)
+                                  ((1 2) (first clause))
+                                  (otherwise (error "bad clause ~S" clause))))
+                               (t (error "mutant clause ~S" clause))))
+                           clauses)))
+    (multiple-value-bind (decls body)
+        (with-collectors (decl body)
+          (do* ((forms decls/forms (rest forms))
+                (this (first forms) (first forms)))
+               ((null forms))
+            (if (and (consp this)
+                     (eql (first this) 'declare))
+                (decl this)
+              (body this))))
+      (let ((start (make-symbol "START")))
+        `(,(if sequential 'let* 'let) ,clauses
+           (declare (ignorable ,@variables))
+           ,@decls
+           (block nil
+             (tagbody
+              ,start
+              (multiple-value-setq ,variables (progn ,@body))
+              (go ,start))))))))
+
+(defmacro looping ((&rest clauses) &body decls/forms)
+  "A simple loop construct
+
+Each clause in CLAUSES may either be <var> which is bound to NIL, or
+may be (<var> <init>) which binds <var> to <init>.  Each time through
+the loop the variables are updated by the values of the BODY.  The
+values of the last of the forms in DECLS/FORMS are used to update the
+variables.  There is no termination condition, but the forms are
+wrapped in a BLOCK named NIL in the usual way.  Initial variable
+bindings are in parallel."
+  (expand-looping clauses decls/forms))
+
+(defmacro looping* ((&rest clauses) &body decls/forms)
+  "Like LOOPING but initial bindings are sequential"
+  (expand-looping clauses decls/forms :sequential t))
 
 (defmacro escaping ((escape &rest defaults) &body forms)
   "Bind a local escape function
