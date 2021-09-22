@@ -100,6 +100,8 @@ will print `10` and then `20`.
 
 `parameters` lives in `org.tfeb.toys.parameters` and provides `:org.tfeb.toys.parameters`.
 
+See also fluids, below.
+
 ## Composable readtable makers: `composable-readtable-maker`
 Something I often find myself wanting to do is to make two or more changes to a readtable with the intention that these changes are orthogonal to each other.  Without writing special code each time this is hard to ensure.  Solving this problem is what composable readtable makers are for.
 
@@ -222,12 +224,121 @@ It does not work to say you are the friend of a class which is not yet defined, 
 
 `hidden-slots` is explicitly a toy: I wrote it just as an example of how easy it is to do something like this.  Something like it might be fine as part of a program, but I don't think it's library-quality (and still less language-quality) code.
 
+## Dynamic bindings for fields: `fluids`
+Programmers in languages which don't have dynamic variables inevitably have to invent them, either by some horrible non-thread-safe shallow-binding approach or more nicely.   Quite often, of course, people writing in such languages don't even *know* they're reinventing dynamic variables: such is the state of education in computing.
+
+Python doesn't have dynamic variables, but it does have enough portable mechanism to invent them, with a thread-safe deep-binding approach.  A while ago when I was writing Python for my living I did that, in a module called `nfluids`[^4], which I should get around to publishing.  Fluids in this implementation were functions which looked up their value on a secretly maintained, thread-local, binding stack which was maintained by `with ...` constructs, thus giving you deep binding.
+
+A nice feature of this approach is that it solves the 'dynamically bind a field/slot in an object' problem: a fluid doesn't change, but the binding it accesses does, since the fluid is essentially a key into the binding stack.  And in a Lisp-1, like Python, it's also pretty elegant.
+
+Well, although CL has dynamic variable, the dynamic-slot-binding problem still exists.  Here's an example.  Given
+
+```lisp
+(defstruct foo
+  (x 1))
+```
+
+let's imagine I have a `foo` and I want, dynamically, to bind `foo-x` to `2`.  Here's a horrible approach to doing that:
+
+```lisp
+(let ((old-x (foo-x it)))
+  (unwind-protect
+      (progn (setf (foo-x it) 2) ...)
+    (setf (foo-x it) old-x)))
+```
+
+This is terrible because it's not thread-safe, and, in any implementation with real concurrency it can't be made so.
+
+Here's how this would look with fluids:
+
+```lisp
+(defstruct foo
+  (x (make-fluid :value 1)))
+
+(fluid-let (((foo-x it) 2))
+  ...
+  (fluid-value (foo-x it))
+  ...)
+```
+
+This is less pretty than the implementation in a Lisp-1: even if fluids were functions (which they're not, in this implementation) you'd still need some equivalent of `fluid-value` (which might just be `funcall`) in a Lisp-2.  But it is thread-safe because, of course, it secretly uses a dynamic variable on which the dynamic bindings of fluids are consed.
+
+There are several possible obvious implementations of fluids: all a fluid really needs to be is a unique object which can serve as a key into the binding stack, and also which can store a global value somehow.  Two obvious implementations are symbols (keeping the global value in `symbol-value` or on the property list of the symbol) or conses, keeping the global value in the `cadr` of the cons (the reason for this is so it's possible for the fluid not to be bound, which I wanted).  Both of these implementations have the problem (which my Python implementation using functions did have) that you can't easily write a `fluidp` predicate, which I wanted.  So this implementation uses a CLOS object for fluids, relying on the ability of its single slot not to be bound to support unbound fluids.  There's an implementation which uses conses in the history of the repo.
+
+Here is a rough description of the interface.
+
+**`make-fluid`** makes a fluid.  It has two keyword arguments:
+
+- `value` will give the fluid a global value – without it the fluid will be globally unbound (unless it got its value from `from`);
+- `from` will copy a fluid, which just means copying its global (not local!) value if any.
+
+**`fluidp`** tells you if an object is a fluid.
+
+**`fluid-value`** accesses the binding of a fluid:
+
+- `(fluid-value f)` will retrieve the current dynamically-apparent binding of `f` or signal an error if it is unbound;
+- `(setf (fluid-value f) ...)` will set the binding, and will signal an error if the fluid is unbound;
+- `(fluid-value f t)` will retrieve the global binding of `f`, and will signal an error if there is no global binding;
+- `(setf (fluid-value f t) ...)` will set the global binding, and will succeed even if there is no current global binding.
+
+The second argument does not need to be `t`: it just needs to be not `nil` as you'd expect.  This is true below as well.
+
+**`fluid-boundp`** tells you things about whether a fluid is bound.  It is slightly complicated.
+
+- `(fluid-boundp f)` returns two values: whether a fluid is bound at all, and whether it has a global binding.  Not all possibilities can happen, since if a fluid has is not bound it can't have a toplevel binding (see below).
+- `(fluid-boundp f t)` returns two values: whether a global binding exists and whether a dynamic binding exists.  In this case all the possibilities *can* happen.
+
+**`fluid-makunbound`** makes a fluid be globally unbound.  Although it's possible to construct an implementation where a fluid is *locally* unbound but *globally*bound by having a special 'not bound' value which can be the value of a local binding (and it is at least arguable that this can happen in CL with `makunbound` and special variables, see the discussion [here](http://cl-su-ai.lisp.se/msg03748.html "dynamic bindings and MAKUNBOUND")), I decided that such an approach was perverse, so fluids don't support that.  So `fluid-makunbound` will succeed only if there is no local binding for the fluid and wil signal an error otherwise.  This is why `fluid-boundp` can't return all the possibilities, of course.
+
+**`define-fluid`** is just a wrapper around `defvar` which defines a fluid as a global variable.  I'm not sure it should exist, but it does.
+
+**`call/fluid-bindings`** calls its first argument with the fluids and values which are its remaining values bound.  Example:
+
+```lisp
+(let ((f (make-fluid)))
+  (call/fluid-bindings (lambda () (fluid-value f)) f 3))
+```
+
+will evaluate to `3`.
+
+**`fluid-let`** is a macro version of `call/fluid-bindings`:
+
+```lisp
+(let ((f (make-fluid :value 4)))
+  (fluid-let ((f 5))
+    (fluid-value f)))
+```
+
+evaluates to `5`.  Note that `fluid-let` evaluates both parts of each pair of fluid & value:
+
+```lisp
+(let ((c (cons (make-fluid) nil)))
+  (fluid-let (((car c) 5))
+    (fluid-value (car c))))
+```
+
+does what it looks like.
+
+**`fluid-let*`** is to `fluid-let` what `let*` is to `let`.
+
+**`fluid-error`** is the class of error conditions related to fluids: `fluid-error-fluid` will retrieve the offending fluid.
+
+**`unbound-fluid-error`** is a subclass of `fluid-error` which is signalled when a fluid is unexpectedly unbound.
+
+**`bound-fluid-error`** is a subclass of `fluid-error` which is signalled when a fluid is unexpectedly bound: this only happens when you try and call `fluid-makunbound` on a fluid with a local binding.
+
+`fluids` lives in `org.tfeb.toys.fluids` and provides `org.tfeb.toys.fluids`.  It is probably on its way to becoming something more than a toy (when its package will change).
+
 ----
 
 The TFEB.ORG Lisp toys are copyright 1990-2021 Tim Bradshaw.  See `LICENSE` for the license.
+
+----
 
 [^1]:	Not quite, because it only really knows how to modify a (copy of) a readtable.
 
 [^2]:	This link is to my own copy.
 
 [^3]:	I once had a much more elaborate system along these lines based around having looked at, I think, C++'s version of this sort of idea (or was it Java's?  I forget), and this system did force friendship relations to be bidirectional.  I probably still have that code somewhere, and I might one day revive it.
+
+[^4]:	There was a previou `fluids` module.  The name 'fluid' comes from Cambridge Lisp / Standard Lisp, although it might go back further than that.  In those languages you would declare a variable 'fluid' which told the compiler that the full dynamic-binding semantics for it should be kept, even in compiled code.  Of course for both those languages compiled code and interpreted code often had different semantics: I am pretty sure that *all* variables in interpreted code were implicitly fluid.
