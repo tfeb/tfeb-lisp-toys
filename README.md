@@ -3,7 +3,7 @@ This repo contains a collection of small Common Lisp toys I've written over the 
 
 These toys may make their way into a more formal place, such as my [Lisp hax repo](https://github.com/tfeb/tfeb-lisp-hax "TFEB.ORG Lisp hax").  When that happens they'll vanish from here (perhaps with a note).  There will therefore never be releases from this repo and you should never assume stability of what's here.  These are just, well, toys.
 
-The documentation is generally rather sparse.  Some of the toys may work, some may not.  Some may never have worked.
+The documentation is generally rather sparse, and it’s also just in the order I wrote it.  Some of the toys may work, some may not.  Some may never have worked.
 
 ## General
 ### Modules
@@ -328,6 +328,34 @@ does what it looks like.
 **`bound-fluid-error`** is a subclass of `fluid-error` which is signalled when a fluid is unexpectedly bound: this only happens when you try and call `fluid-makunbound` on a fluid with a local binding.
 
 `fluids` lives in `org.tfeb.toys.fluids` and provides `org.tfeb.toys.fluids`.  It is probably on its way to becoming something more than a toy (when its package will change).
+
+## Making variables inaccessible: `descope`
+I quite often find I make mistakes like the following when I’m taking a bit of code which uses some variable and modifying it to use something derived from it, but then forgetting to replace all the references to the outer variable:
+
+```lisp
+(defun foo (l)
+  (let ((l1 (function-of l)))
+    ...
+    (let ((l2 (another-function-of l1)))
+      ... update l2 ...
+      ... (when (null l1) (return ...)) ...)))
+```
+
+So I wrote a little macro which makes it possible to say ‘these variables are now out of scope’.
+
+**`descoping`** is a macro in the body of which one or more variables are out of scope:
+
+```lisp
+(let ((y (f x)))
+  (descoping (x)
+    ... references to x are now errors ...))
+```
+
+It does this the way you would expect: it binds the symbols in its first arguments as symbol-macros which create a compile-time warning and a run-time error.  The warning is a `descoped-variable-warning` and the error is a `descoped-variable-error` and they’re both subclasses of `descoped-variable`.
+
+I used this exactly once to help me fix idiocies in a program I was modifying: I think it’s only real use is to demonstrate just how much you make make the language do for you.
+
+It is in `org.tfeb.toys.descope` and provides `org.tfeb.toys.descope`.
 
 ----
 
