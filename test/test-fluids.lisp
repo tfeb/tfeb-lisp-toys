@@ -12,9 +12,9 @@
 
 (in-package :org.tfeb.toys.fluids/test)
 
-(define-test "fluids")
+(define-test "org.tfeb.toys.fluids")
 
-(define-test ("fluids" "simple")
+(define-test ("org.tfeb.toys.fluids" "simple")
   (let ((f (make-fluid))
         (g (make-fluid :value 3)))
     ;; check bindery
@@ -28,7 +28,7 @@
     (true (fluidp f))
     (false (fluidp 1))))
 
-(define-test ("fluids" "make-fluid")
+(define-test ("org.tfeb.toys.fluids" "make-fluid")
   (let ((f (make-fluid))
         (g (make-fluid :value 1)))
     (false (fluid-boundp (make-fluid :from f)))
@@ -38,7 +38,7 @@
       (false (fluid-boundp (make-fluid :from f)))
       (is eql (fluid-value (make-fluid :from g)) 1))))
 
-(define-test ("fluids" "local and global")
+(define-test ("org.tfeb.toys.fluids" "local and global")
   (let ((f (make-fluid :value 1)))
     (is eql (fluid-value f) 1)
     (fluid-let ((f 2))
@@ -52,7 +52,7 @@
       (is eql (fluid-value f t) 8))
     (is eql (fluid-value f) 8)))
 
-(define-test ("fluids" "boundp")
+(define-test ("org.tfeb.toys.fluids" "boundp")
   (let ((f (make-fluid :value 1))
         (g (make-fluid)))
     (is-values (fluid-boundp f)
@@ -74,7 +74,7 @@
       (is-values (fluid-boundp g t)
         (eql nil) (eql t)))))
 
-(define-test ("fluids" "makunbound")
+(define-test ("org.tfeb.toys.fluids" "makunbound")
   (let ((f (make-fluid)))
     (is eql (fluid-makunbound f) f)
     (fluid-let ((f 1))
@@ -87,7 +87,7 @@
     (is-values (fluid-boundp f t)
       (eql nil) (eql nil))))
 
-(define-test ("fluids" "fluid-value")
+(define-test ("org.tfeb.toys.fluids" "fluid-value")
   (let ((f (make-fluid))
         (g (make-fluid :value 1)))
     (fail (fluid-value f) unbound-fluid-error)
@@ -105,7 +105,7 @@
     (true (fluid-boundp g))
     (is eql (fluid-value g) 1)))
 
-(define-test ("fluids" "call/fluids-bindings")
+(define-test ("org.tfeb.toys.fluids" "call/fluids-bindings")
   (let ((f (make-fluid :value 3)))
     (finish (call/fluid-bindings
              (lambda ())
@@ -116,7 +116,7 @@
         4)
     (is eql (fluid-value f) 3)))
 
-(define-test ("fluids" "fluid-let, fluid-let*")
+(define-test ("org.tfeb.toys.fluids" "fluid-let, fluid-let*")
   (let ((f (make-fluid :value 1))
         (g (make-fluid)))
     (is eql
@@ -128,7 +128,7 @@
           (fluid-value g))
         2)))
 
-(define-test ("fluids" "type checking")
+(define-test ("org.tfeb.toys.fluids" "type checking")
   (let ((f (make-fluid)))
     (finish (call/fluid-bindings (lambda ()) f 1))
     (finish (fluid-let ((f 1))))
@@ -137,4 +137,4 @@
     (fail (fluid-let (('x 1)))
           type-error)))
 
-(test "fluids" :report 'summary)
+(test "org.tfeb.toys.fluids" :report 'summary)

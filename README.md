@@ -231,7 +231,7 @@ Python doesn't have dynamic variables, but it does have enough portable mechanis
 
 A nice feature of this approach is that it solves the 'dynamically bind a field/slot in an object' problem: a fluid doesn't change, but the binding it accesses does, since the fluid is essentially a key into the binding stack.  And in a Lisp-1, like Python, it's also pretty elegant.
 
-Well, although CL has dynamic variable, the dynamic-slot-binding problem still exists.  Here's an example.  Given
+Well, although CL has dynamic variables, the dynamic-slot-binding problem still exists.  Here's an example.  Given
 
 ```lisp
 (defstruct foo
@@ -356,6 +356,92 @@ It does this the way you would expect: it binds the symbols in its first argumen
 I used this exactly once to help me fix idiocies in a program I was modifying: I think it’s only real use is to demonstrate just how much you make make the language do for you.
 
 It is in `org.tfeb.toys.descope` and provides `org.tfeb.toys.descope`.
+
+## Spaghetti code: `spaghetti`
+> procedure calls may be usefully thought of as GOTO statements which also pass parameters – Guy Steele, [Lambda: the ultimate GOTO](https://dspace.mit.edu/handle/1721.1/5753 "Lambda: the ultimate GOTO")
+
+If you use `spaghetti` you do actually have a GOTO which passes arguments.  It has a construct, `labelling` within which you can define labels with forms like `(label name [arguments])`: 'invoking' a label consists of assigning values corresponding to its arguments, if any, and then jumping to the place it's defined.  Here's an example:
+
+```lisp
+(labelling ((i 0))
+  (label top (i))
+  (print i)
+  (when (< i 10)
+    (top (1+ i)))
+  i)
+```
+
+Here `top` is  label, and `(top x)` jumps to that label, assigning a value to `i`.  This can be made more concise (perhaps opaque would be a better word):
+
+```lisp
+(labelling ((i 0))
+  (label top (&optional (i (1+ i))))
+  (print i)
+  (when (< i 10)
+    (top))
+  i)
+```
+
+In this form the label defined by `top` has an optional argument and will increment `i`if it is not given.  So you can easily write this horrid thing:
+
+```lisp
+(defun foo (n m)
+  (labelling ((i 0) (j 0))
+    (label top (&key (i (1+ i)) (j j)))
+    (when (= i m)
+      (top :i 0 :j (1+ j)))
+    (when (= j n)
+      (bottom))
+    (format t "~&i=~D j=~D~%" i j)
+    (top)
+    (label bottom)
+    (values)))
+```
+
+And now:
+
+```lisp
+> (foo 2 2)
+i=0 j=0
+i=1 j=0
+i=0 j=1
+i=1 j=1
+```
+
+Why you would *want* to write this escapes me, but you could.
+
+**`labelling`** is a form which binds zero or more variables the way `let` does, and the body of which is an implicit `progn` except that the  `label` form may be used to establish labels.  It establishes an implicit `block` named `nil` so  `return` `return-from` will escape from it.  Declarations are allowed at the start of the body.
+
+**`labelling*`** is like `labelling` except that the initial bindings are done sequentially, like `let*`, *and* assignments done by invokations of `label` forms happen sequentially.
+
+**`label`** is a form which can be used only within `labelling` / `labelling*`.  It has two syntaxes:
+
+`(label name)` extablishes `name` as a label, and then `(name)` will jump to that label.
+
+`(label name arglist)` establishes `name` as a label, but 'invoking' name now will perform a number of assignments to the variables named in the arglist before the jump.  These assignments happen in parallel (like `psetq`) for `labelling` and in sequence (like `setq`) for `labelling*`.  The order of the assignments depends on their order in the arglist, *not* the order they are given in when invoking the label: this can be different for keyword arguments.
+
+You can use `&optional`, `&key` and `&aux` in the arglist: `&aux` is useful when you want to have an assignment which can't be overridden.  No other lambda-list keywords are allowed.
+
+It's probably easiest to explain what happens with a couple of examples.
+
+- Given `(label foo (x y))` then `(foo 1 2)` corresponds to
+	- in `labelling` `(progn (psetq x 1 y 2) (go foo))`;
+	- in `labelling*` `(progn (seq x 1 y 2) (go foo))`.
+- Given `(label foo (&optional (i (1+ i)))` then
+	- `(foo)` corresponds to `(progn (psetq i (1+ i)) (go foo))` and correspondingly for `labelling*`;
+	- `(foo 1)` is `(progn (psetq i 1) (go foo))`.
+- Given `(label foo (&key (x x) (y 0))` then the assignments happen to the default values specified or to the arguments given, if any.
+- Given `(label foo (&aux (i (1+ i))))` then `(foo)` will always increment `i`.
+
+Notes.
+
+- The things defined by `label` are macros, not local functions.
+- Default value forms are spliced in literally as you'd expect for macros.
+- The variables assigned to don't have to be those defined by `labelling` / `labelling*`.
+- The two missing bind-sequentially/assign-in-parallel and bind-in-parallel/assign-sequentially variants are indeed missing.
+- May explode without warning, especially if you use it.  Dangerous to fish.
+
+It is in `org.tfeb.toys.spaghetti` and provides `org.tfeb.toys.spaghetti`.
 
 ----
 
