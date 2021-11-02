@@ -13,7 +13,8 @@
   (:export
    #:labelling
    #:labelling*
-   #:label))
+   #:label
+   #:label*))
 
 (in-package :org.tfeb.toys.spaghetti)
 
@@ -31,25 +32,29 @@
           (values (nreverse slced) tail))))))
 
 (defun labelify-body (forms)
-  ;; Return the canonical body and a bunch of label forms
-  (with-collectors (body label-form)
+  ;; Return the canonical body, the label and label* forms
+  (with-collectors (body label-form label*-form)
     (do* ((tail forms (rest tail))
           (form (first tail) (first tail)))
          ((null tail))
       (cond
-       ((and (consp form) (eq (first form) 'label))
+       ((and (consp form) (member (first form) '(label label*)))
         (case (length form)
           (2
            (unless (symbolp (second form))
              (error "mutant label ~S" form))
            (body (second form))
-           (label-form (list (second form) '())))
+           (case (first form)
+             (label (label-form (list (second form) '())))
+             (label* (label*-form (list (second form) '())))))
           (3
            (unless (and (symbolp (second form))
                         (listp (third form)))
              (error "mutant label ~S" form))
            (body (second form))
-           (label-form (rest form)))
+           (case (first form)
+             (label (label-form (rest form)))
+             (label* (label*-form (rest form)))))
           (otherwise
            (error "mutant label ~S" form))))
        ((null (rest tail))
@@ -204,37 +209,41 @@
                            varspec label-arglist)))))))
         (parse-normals label-arglist)))))
 
-(defun label-form->macrolet-form (label-form &optional (sequential nil))
+(defun label-form->macrolet-form (label-form &optional (setq 'psetq))
   (destructuring-bind (label-name label-arglist) label-form
     (multiple-value-bind (arglist variables mapped)
         (anonymize-label-arglist label-arglist)
       `(,label-name
         ,arglist
         `(progn
-           (,',(if sequential 'setq 'psetq)
+           (,',setq
             ,@(mapcan #'list ',variables (list ,@mapped)))
            (go ,',label-name))))))
 
 (defmacro labelling (bindings &body decls/forms)
-  ;; everything is in parallel
+  ;; like LET
   (multiple-value-bind (declarations forms) (extract-declarations decls/forms)
-    (multiple-value-bind (body label-forms) (labelify-body forms)
+    (multiple-value-bind (body label-forms label*-forms) (labelify-body forms)
       `(let ,bindings
          ,@declarations
-         (macrolet ,(mapcar #'label-form->macrolet-form label-forms)
+         (macrolet ,(append (mapcar #'label-form->macrolet-form label-forms)
+                            (mapcar (lambda (form)
+                                      (label-form->macrolet-form form 'setq))
+                              label*-forms))
            (block nil
              (tagbody
               ,@body)))))))
 
 (defmacro labelling* (bindings &body decls/forms)
-  ;; everything is sequential
+  ;; like LET*
   (multiple-value-bind (declarations forms) (extract-declarations decls/forms)
-    (multiple-value-bind (body label-forms) (labelify-body forms)
+    (multiple-value-bind (body label-forms label*-forms) (labelify-body forms)
       `(let* ,bindings
          ,@declarations
-         (macrolet ,(mapcar #'(lambda (f)
-                                (label-form->macrolet-form f t))
-                            label-forms)
+         (macrolet ,(append (mapcar #'label-form->macrolet-form label-forms)
+                            (mapcar (lambda (form)
+                                      (label-form->macrolet-form form 'setq))
+                              label*-forms))
            (block nil
              (tagbody
               ,@body)))))))

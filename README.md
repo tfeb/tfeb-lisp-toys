@@ -360,7 +360,7 @@ It is in `org.tfeb.toys.descope` and provides `org.tfeb.toys.descope`.
 ## Spaghetti code: `spaghetti`
 > procedure calls may be usefully thought of as GOTO statements which also pass parameters – Guy Steele, [Lambda: the ultimate GOTO](https://dspace.mit.edu/handle/1721.1/5753 "Lambda: the ultimate GOTO")
 
-If you use `spaghetti` you do actually have a GOTO which passes arguments.  It has a construct, `labelling` within which you can define labels with forms like `(label name [arguments])`: 'invoking' a label consists of assigning values corresponding to its arguments, if any, and then jumping to the place it's defined.  Here's an example:
+If you use `spaghetti` you do actually have a GOTO which passes arguments.  It has constructs, `labelling` and  `labelling*`, within which you can define labels with forms like `(label name [arguments])` and `(label* name [arguments])`: 'invoking' a label consists of assigning values corresponding to its arguments, if any, and then jumping to the place it's defined.  Here's an example:
 
 ```lisp
 (labelling ((i 0))
@@ -412,33 +412,49 @@ Why you would *want* to write this escapes me, but you could.
 
 **`labelling`** is a form which binds zero or more variables the way `let` does, and the body of which is an implicit `progn` except that the  `label` form may be used to establish labels.  It establishes an implicit `block` named `nil` so  `return` `return-from` will escape from it.  Declarations are allowed at the start of the body.
 
-**`labelling*`** is like `labelling` except that the initial bindings are done sequentially, like `let*`, *and* assignments done by invokations of `label` forms happen sequentially.
+**`labelling*`** is like `labelling` except that the initial bindings are done sequentially, like `let*`.
 
 **`label`** is a form which can be used only within `labelling` / `labelling*`.  It has two syntaxes:
 
 `(label name)` extablishes `name` as a label, and then `(name)` will jump to that label.
 
-`(label name arglist)` establishes `name` as a label, but 'invoking' name now will perform a number of assignments to the variables named in the arglist before the jump.  These assignments happen in parallel (like `psetq`) for `labelling` and in sequence (like `setq`) for `labelling*`.  The order of the assignments depends on their order in the arglist, *not* the order they are given in when invoking the label: this can be different for keyword arguments.
-
-You can use `&optional`, `&key` and `&aux` in the arglist: `&aux` is useful when you want to have an assignment which can't be overridden.  No other lambda-list keywords are allowed.
+`(label name arglist)` establishes `name` as a label, but 'invoking' name now will perform a number of assignments to the variables named in the arglist before the jump.  These assignments happen in parallel (like `psetq`).   You can use `&optional`, `&key` and `&aux` in the arglist: `&aux` is useful when you want to have an assignment which can't be overridden.  No other lambda-list keywords are allowed.
 
 It's probably easiest to explain what happens with a couple of examples.
 
-- Given `(label foo (x y))` then `(foo 1 2)` corresponds to
-	- in `labelling` `(progn (psetq x 1 y 2) (go foo))`;
-	- in `labelling*` `(progn (seq x 1 y 2) (go foo))`.
+- Given `(label foo (x y))` then `(foo 1 2)` corresponds to `(progn (psetq x 1 y 2) (go foo)`.
 - Given `(label foo (&optional (i (1+ i)))` then
-	- `(foo)` corresponds to `(progn (psetq i (1+ i)) (go foo))` and correspondingly for `labelling*`;
+	- `(foo)` corresponds to `(progn (psetq i (1+ i)) (go foo))`;
 	- `(foo 1)` is `(progn (psetq i 1) (go foo))`.
 - Given `(label foo (&key (x x) (y 0))` then the assignments happen to the default values specified or to the arguments given, if any.
 - Given `(label foo (&aux (i (1+ i))))` then `(foo)` will always increment `i`.
 
+**`label*`** is the same as `label` except that assignments ae done sequentially: with `setq` rather than `psetq`.  The order of the assignments depends on their order in the arglist, *not* the order they are given in when invoking the label: this can be different for keyword arguments.   So, for example
+
+```lisp
+(labelling ((a 1) (b 2))
+  (end)
+  (label end (&aux (a (1+ 1)) (b (1+ a))))
+  (values a b))
+```
+
+evaluates to `2` and `2`, while
+
+```lisp
+(labelling ((a 1) (b 2))
+  (end)
+  (label* end (&aux (a (1+ 1)) (b (1+ a))))
+  (values a b))
+```
+
+evaluates to `2` and `3`.
+
 Notes.
 
-- The things defined by `label` are macros, not local functions.
+- The things defined by `label` are macros, not local functions.  That means, for instance, keyword argument processing happens at macroexpansion time and will have no runtime cost at all.
 - Default value forms are spliced in literally as you'd expect for macros.
 - The variables assigned to don't have to be those defined by `labelling` / `labelling*`.
-- The two missing bind-sequentially/assign-in-parallel and bind-in-parallel/assign-sequentially variants are indeed missing.
+- `label*` is probably more natural (and perhaps more efficient) than `label`while having a less natural name.  But the analogy with `let*` / `let` was too close for me to want to swap them.
 - May explode without warning, especially if you use it.  Dangerous to fish.
 
 It is in `org.tfeb.toys.spaghetti` and provides `org.tfeb.toys.spaghetti`.
@@ -455,4 +471,4 @@ The TFEB.ORG Lisp toys are copyright 1990-2021 Tim Bradshaw.  See `LICENSE` for 
 
 [^3]:	I once had a much more elaborate system along these lines based around having looked at, I think, C++'s version of this sort of idea (or was it Java's?  I forget), and this system did force friendship relations to be bidirectional.  I probably still have that code somewhere, and I might one day revive it.
 
-[^4]:	There was a previou `fluids` module.  The name 'fluid' comes from Cambridge Lisp / Standard Lisp, although it might go back further than that.  In those languages you would declare a variable 'fluid' which told the compiler that the full dynamic-binding semantics for it should be kept, even in compiled code.  Of course for both those languages compiled code and interpreted code often had different semantics: I am pretty sure that *all* variables in interpreted code were implicitly fluid.
+[^4]:	There was a previous `fluids` module.  The name 'fluid' comes from Cambridge Lisp / Standard Lisp, although it might go back further than that.  In those languages you would declare a variable 'fluid' which told the compiler that the full dynamic-binding semantics for it should be kept, even in compiled code.  Of course for both those languages compiled code and interpreted code often had different semantics: I am pretty sure that *all* variables in interpreted code were implicitly fluid.
