@@ -20,17 +20,6 @@
 
 (provide :org.tfeb.toys.spaghetti)
 
-(defun extract-declarations (decls/forms)
-  ;; Yet another
-  (iterate next ((tail decls/forms)
-                 (slced '()))
-    (if (null tail)
-        (values (nreverse slced) nil)
-      (destructuring-bind (it . more) tail
-        (if (and (consp it) (eq (first it) 'declare))
-            (next more (cons it slced))
-          (values (nreverse slced) tail))))))
-
 (defun labelify-body (forms)
   ;; Return the canonical body, the label and label* forms
   (with-collectors (body label-form label*-form)
@@ -222,28 +211,20 @@
 
 (defmacro labelling (bindings &body decls/forms)
   ;; like LET
-  (multiple-value-bind (declarations forms) (extract-declarations decls/forms)
-    (multiple-value-bind (body label-forms label*-forms) (labelify-body forms)
-      `(let ,bindings
-         ,@declarations
-         (macrolet ,(append (mapcar #'label-form->macrolet-form label-forms)
-                            (mapcar (lambda (form)
-                                      (label-form->macrolet-form form 'setq))
-                              label*-forms))
-           (block nil
-             (tagbody
-              ,@body)))))))
+  (multiple-value-bind (body label-forms label*-forms) (labelify-body decls/forms)
+    `(macrolet ,(append (mapcar #'label-form->macrolet-form label-forms)
+                        (mapcar (lambda (form)
+                                  (label-form->macrolet-form form 'setq))
+                          label*-forms))
+       (prog ,bindings
+         ,@body))))
 
 (defmacro labelling* (bindings &body decls/forms)
   ;; like LET*
-  (multiple-value-bind (declarations forms) (extract-declarations decls/forms)
-    (multiple-value-bind (body label-forms label*-forms) (labelify-body forms)
-      `(let* ,bindings
-         ,@declarations
-         (macrolet ,(append (mapcar #'label-form->macrolet-form label-forms)
-                            (mapcar (lambda (form)
-                                      (label-form->macrolet-form form 'setq))
-                              label*-forms))
-           (block nil
-             (tagbody
-              ,@body)))))))
+  (multiple-value-bind (body label-forms label*-forms) (labelify-body decls/forms)
+    `(macrolet ,(append (mapcar #'label-form->macrolet-form label-forms)
+                        (mapcar (lambda (form)
+                                  (label-form->macrolet-form form 'setq))
+                          label*-forms))
+       (prog* ,bindings
+         ,@body))))
