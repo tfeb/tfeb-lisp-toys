@@ -5,7 +5,8 @@
   (:use :cl)
   (:export
    #:defglex
-   #:defglex*))
+   #:defglex*
+   #:make-glex-readtable))
 
 (in-package :org.tfeb.toys.glex)
 
@@ -25,6 +26,7 @@
 (declaim (inline glex-value (setf glex-value)))
 
 (defun glex-value (sym)
+  (check-type sym symbol "a symbol")
   (multiple-value-bind (boundp val) (get-properties (symbol-plist sym)
                                                     '(glex-value))
     (unless boundp
@@ -32,6 +34,7 @@
     val))
 
 (defun (setf glex-value) (new sym)
+  (check-type sym symbol "a symbol")
   (setf (get sym 'glex-value) new))
 
 (defmacro defglex (x &optional (value nil valuep) (documentation nil docp))
@@ -68,3 +71,25 @@ This is to DEFGLEX as DEFPARAMETER is to DEFVAR."
            `((setf (documentation ',x 'variable) ',documentation))
          '())
      ',x))
+
+(define-condition glex-reader-error (reader-error simple-error)
+  ())
+
+(defun make-glex-readtable (&key (from *readtable*) (to nil)
+                                 (dollar #\$))
+  (let ((glrt (copy-readtable from to)))
+    (when (get-dispatch-macro-character #\# dollar glrt)
+      (error "Someone is already using #~A" dollar))
+    (set-dispatch-macro-character
+     #\# dollar
+     (lambda (stream char n)
+       (declare (ignore char n))
+       (let ((got (read stream t nil t)))
+         (unless (symbolp got)
+           (error 'glex-reader-error
+                  :format-control "global lexicals are symbols: ~S is ~S"
+                  :format-arguments (list got (type-of got))
+                  :stream stream))
+         `(glex-value ',got)))
+     glrt)
+    glrt))

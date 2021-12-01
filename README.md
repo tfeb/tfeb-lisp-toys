@@ -18,7 +18,7 @@ The repo from which the toys are published was invented in 2021, but some of the
 ### Naming conventions
 All of the toys use *domain-structured names*: packages, modules, features and so on have names which start with a reversed DNS domain and then continue to divide further.  The prefix for all of the toys is `org.tfeb.toys`.  See [the TFEB.ORG tools documentation](https://github.com/tfeb/tfeb-lisp-tools#naming-conventions "TFEB.ORG tools / Naming conventions") for a little more on this.  If they move elsewhere, these names will change.
 
-----
+---
 
 ## An iteration protocol: `for`
 This lets you define iterators for objects by defining methods on `iter` which typically returns a function.  `next` (another generic function) should then know how to get the next element from an iterator: for an iterator which is a function it just calls it.  `for` is a macro which will loop over objects, calling `iter` to make the iterator & `next` to get the next values.  There are also `range`s, and finally a `gather` macro which is a bit like Python's list comprehensions (or what I thought they were like in 2004).
@@ -78,6 +78,31 @@ CL only has global *special* variables, which are dynamically scoped.  But it's 
 **`defglex`** is like `defvar`: `(defglex x)` will define `x` as a global lexical but not give it an initial value, while `(defglex x 1)` will give it an initial value as well.  You can provide documentation strings.
 
 **`defglex*`** is like `defparameter`: you can't omit the value and it is set each time.
+
+**`make-glex-readtable`** will construct a readtable in which `#$x` refers to a global lexical variable `x`.  It has three keyword arguments:
+
+- `from` is the readtable to copy, defaultly `*readtable*`;
+- `to` is the readtable to copy into, defaultly `nil`;
+- `dollar` is the subcharacter to use, defaultly `#\$`.
+
+Example:
+
+```lisp
+> (setf *readtable* (make-glex-readtable))
+#<readtable 4020064633>
+
+> (setf #$x 1)
+1
+
+> #$x
+1
+
+> (defglex x)
+x
+
+> x
+1
+```
 
 `glex` lives in `org.tfeb.toys.glex` and provides `:org.tfeb.toys.glex`.
 
@@ -459,11 +484,11 @@ Notes.
 
 It is in `org.tfeb.toys.spaghetti` and provides `org.tfeb.toys.spaghetti`.
 
-----
+---
 
 The TFEB.ORG Lisp toys are copyright 1990-2021 Tim Bradshaw.  See `LICENSE` for the license.
 
-----
+---
 
 [^1]:	Not quite, because it only really knows how to modify a (copy of) a readtable.
 
