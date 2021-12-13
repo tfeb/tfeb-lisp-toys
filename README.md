@@ -484,6 +484,19 @@ Notes.
 
 It is in `org.tfeb.toys.spaghetti` and provides `org.tfeb.toys.spaghetti`.
 
+## Square-bracket forms: `sb-readtable`
+CL, being a Lisp-2, makes it somewhat verbose to pass functions around as arguments: you end up with a lot of `(funcall x ...)`s in code.  `sb-readtable` makes it so that `[x ...]` is read as `(funcall x ...)`, and it can do other things as well.
+
+The readtable constructed by `make-sb-readtable` lets you read forms like `[...]`.    Normally `[...]` reads as `(<op> ...)` where `<op>` is the value of `*sb-operator-name*`. (which by default is `funcall`).  However, if `*sb-transformer*` is not `nil`, then it is used to transform the form read into anything it wants to.  Note that both of these things happen at read time.
+
+**`make-sb-readtable`** returns a readtable in which `#\[` is defined to read a form as described above, and `#\]` is an error.  It has two optional arguments: `from-readtable` is the readtable to copy, defaultly `*readtable*`, and `to-readtable` is the readtable to copy into, defaultly `nil`: these have the same semantics as for `copy-readtable`.
+
+**`*sb-operator-name*`** is the operator name interposed by default in `[...]` syntax.  Defaultly it is `funcall`.
+
+**`*sb-transformer*`** is either `nil` or a designator for a function of two arguments: the form read by `[...]` and the stream it was read from.  Its result is used as the value of the read form.  It's passed the stream so it can signal useful read-time errors.  Default value is `nil`.
+
+`sb-readtable` lives in `org.tfeb.toys.sb-readtable` and provides `org.tfeb.toys.sb-readtable`.
+
 ---
 
 The TFEB.ORG Lisp toys are copyright 1990-2021 Tim Bradshaw.  See `LICENSE` for the license.
