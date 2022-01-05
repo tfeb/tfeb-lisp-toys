@@ -485,11 +485,17 @@ Notes.
 It is in `org.tfeb.toys.spaghetti` and provides `org.tfeb.toys.spaghetti`.
 
 ## Square-bracket forms: `sb-readtable`
-CL, being a Lisp-2, makes it somewhat verbose to pass functions around as arguments: you end up with a lot of `(funcall x ...)`s in code.  `sb-readtable` makes it so that `[x ...]` is read as `(funcall x ...)`, and it can do other things as well.
+CL, being a Lisp-2, makes it somewhat verbose to pass functions around as arguments: you end up with a lot of `(funcall x ...)`s in code.  `sb-readtable` makes it so that `[x ...]` is read as `(funcall x ...)`, and it can do other things as well.  You can in fact control what the pair of bracket characters are if you want to do that.
 
 The readtable constructed by `make-sb-readtable` lets you read forms like `[...]`.    Normally `[...]` reads as `(<op> ...)` where `<op>` is the value of `*sb-operator-name*`. (which by default is `funcall`).  However, if `*sb-transformer*` is not `nil`, then it is used to transform the form read into anything it wants to.  Note that both of these things happen at read time.
 
-**`make-sb-readtable`** returns a readtable in which `#\[` is defined to read a form as described above, and `#\]` is an error.  It has two optional arguments: `from-readtable` is the readtable to copy, defaultly `*readtable*`, and `to-readtable` is the readtable to copy into, defaultly `nil`: these have the same semantics as for `copy-readtable`.
+**`make-sb-readtable`** returns a readtable in which `#\[` (or any character you specify) is defined to read a form as described above, and `#\]` (or any other character you specify) is an error.  It has three keyword arguments:
+
+- `brackets` should be a list of an open and close bracket character, and is by default `(#\[ #\])`;
+- `from-readtable` is the readtable to copy, defaultly `*readtable*`
+- `to-readtable` is the readtable to copy into, defaultly `nil`.
+
+`from-readtable` and `to-readtable` have the same semantics as for `copy-readtable`.
 
 **`*sb-operator-name*`** is the operator name interposed by default in `[...]` syntax.  Defaultly it is `funcall`.
 
