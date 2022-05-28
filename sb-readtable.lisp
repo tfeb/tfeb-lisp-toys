@@ -34,7 +34,8 @@ second argument is intended to help when signalling errors.")
 
 (defun make-sb-readtable (&key (from-readtable *readtable*)
                                (to-readtable nil)
-                               (brackets '(#\[ #\])))
+                               (brackets '(#\[ #\]))
+                               (clobber nil))
   "Make a readtable where [...] (or specified brackets) reads as described below.
 
 FROM-READTABLE is the readtable to copy, defaultly *READTABLE*,
@@ -43,6 +44,9 @@ make a new readtable.
 
 BRACKETS, if given, should be a list of an open and close bracket
 characters, with the default being (#\\[ #\\]).
+
+CLOBBER, if true, will tell it to clobber any existing macro
+characters in the readtable.
 
 Return the readtable created.  If the existing readtable defines the
 open or close bracket character as in any way special an error
@@ -59,8 +63,9 @@ from.  This function is responsible for transforming whatever was
 read however it wishes to."
   (let ((sbrt (copy-readtable from-readtable to-readtable)))
     (destructuring-bind (open close) brackets
-      (when (or (get-macro-character open sbrt)
-                (get-macro-character close sbrt))
+      (when (and (not clobber)
+                 (or (get-macro-character open sbrt)
+                     (get-macro-character close sbrt)))
         (error "readtable already defines ~S and/or ~S as macro characters"
                open close))
       (set-macro-character

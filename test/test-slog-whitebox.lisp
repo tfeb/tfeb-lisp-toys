@@ -1,0 +1,95 @@
+;;;; White box testing of slog
+;;;
+
+#+org.tfeb.tools.require-module
+(org.tfeb.tools.require-module:needs
+ (:org.tfeb.toys.slog :compile t)
+ (:org.tfeb.conduit-packages :compile t)
+ ("parachute" :fallback ql:quickload))
+
+(org.tfeb.clc:defpackage :org.tfeb.toys.slog/test/whitebox
+  (:clones :org.tfeb.toys.slog)
+  (:use :org.shirakumo.parachute))
+
+(in-package :org.tfeb.toys.slog/test/whitebox)
+
+(define-test "org.tfeb.toys.slog/whitebox")
+
+(defun load-relative-pathname (p)
+  (if *load-truename*
+      (merge-pathnames (pathname p)
+                       *load-truename*)
+    p))
+
+(define-test ("org.tfeb.toys.slog/whitebox" "sanity")
+  (true (null *log-file-streams*))
+  (let ((lf (load-relative-pathname "log/foo.log")))
+    (when (probe-file lf) (delete-file lf))
+    (false (probe-file lf))
+    (logging ((t lf))
+      (slog "test"))
+    (true (probe-file lf))
+    (true (null *log-file-streams*))
+    (when (probe-file lf) (delete-file lf))))
+
+(define-test ("org.tfeb.toys.slog/whitebox" "reopen")
+  (let ((lf (load-relative-pathname "log/foo.log")))
+    (logging ((t lf))
+      (slog "test 1")
+      (is = 1 (length *log-file-streams*))
+      (close-open-log-files :reset t)
+      (is = 0 (length *log-file-streams*))
+      (slog "test 2")
+      (is = 1 (length *log-file-streams*)))
+    (is = 0 (length *log-file-streams*))
+    (finish (delete-file lf))))
+
+(defun it-offset ()
+  (multiple-value-bind (ut it)
+      (compute-image-time-offsets)
+    (- (* ut internal-time-units-per-second) it)))
+
+(define-test ("org.tfeb.toys.slog/whitebox" "precision-time")
+  (true
+   ;; check that the computed offset is consistent (this test is slow)
+   (reduce (lambda (a b)
+             (etypecase a
+               (integer (and (= a b) a))
+               (null nil)))
+           (collecting
+             (dotimes (i 10)
+               (collect
+                (destructuring-bind (ut it)
+                    (compute-image-time-offsets)
+                  (- (* ut internal-time-units-per-second) it)))))))
+  ;; A version of this is also in the source as basic sanity
+  ;;
+  (logging ((t *error-output*))
+    (let ((goods 0)
+          (stepped 0)
+          (bads 0)
+          (trials 10000))
+      (dotimes (i trials)
+        (let* ((integer (get-universal-time))
+               (precision (get-precision-universal-time :type 'double-float))
+               (floored (floor precision)))
+          (cond
+           ((= floored integer)
+            (incf goods))
+           ((= floored (1+ integer))
+            (slog "precision time ~F is stepped from ~D"
+                  precision integer)
+            (incf stepped))
+           (t
+            (slog "precision time ~F is hopelessly different than ~D"
+                  precision integer)
+            (incf bads)))))
+      (is = 0 bads
+          "from ~D tries ~D precision times aren't" trials bads)
+      (false (zerop goods)
+             "no good results from ~D trials" trials)
+      (is < 1/100 (/ stepped goods)
+          "from ~D trials got ~D good times, but ~D stepped"
+          trials goods stepped))))
+
+(test "org.tfeb.toys.slog/whitebox" :report 'summary)

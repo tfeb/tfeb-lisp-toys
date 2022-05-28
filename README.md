@@ -18,6 +18,9 @@ The repo from which the toys are published was invented in 2021, but some of the
 ### Naming conventions
 All of the toys use *domain-structured names*: packages, modules, features and so on have names which start with a reversed DNS domain and then continue to divide further.  The prefix for all of the toys is `org.tfeb.toys`.  See [the TFEB.ORG tools documentation](https://github.com/tfeb/tfeb-lisp-tools#naming-conventions "TFEB.ORG tools / Naming conventions") for a little more on this.  If they move elsewhere, these names will change.
 
+### The likely fate of some of the toys
+`simple-loops`will probably end up being in my hax repo.  `locatives` will likely end up there too, as will `fluids`.  `glex` I'm not sure abot.  `slog` will certainly become a hack once it's more complete.
+
 ---
 
 ## An iteration protocol: `for`
@@ -170,7 +173,13 @@ Can collect objects during a completely general recursive search, for instance.
 - `(<var> <init/step>)` means `(<var> <init/step> <init/step>)`;
 - `(<var> <init> <step>)` means what it currently does.
 
-In addition if no return value is specified the current values of all the bindings are returned.
+In addition the values returned are both more defaulted and more flexible:
+
+- if no return value is specified then the current values of all the bindings are returned;
+- if a single form is specified then all its values are returned (this is just like `do`);
+- if there are more than a single form, then then all the values from all of them are returned.
+
+To get the same behaviour as, for instance, `(do (...) (<test>) ...)` you therefore need to say `(doing (...) (<test> nil) ...)`: `(doing (...) (<test>) ...)` will return the current values of all the variables.
 
 **`passing`** and **`failing`** are while and until loops which bind variables with the same defaulting as `doing`: `(passing ((x ...) (y ...)) ...)` will iterate until `(and x y)` is true and then return the values of `x` and `y`.  `failing` will iterate until they are *not* all true and then return their values.
 
@@ -178,7 +187,7 @@ In addition if no return value is specified the current values of all the bindin
 
 There are starred forms of all these macros which bind sequentially, for a total of six macros.
 
-**`looping`**  and **`looping*`**  are looping constructs with implicit stepping: `(looping ((a 1) b) ...)` will bind `a` to `1` and `b` to `nil` and then the values of the last form in the body is used to step the values.  There is no termination clause, but there is an implicit block named `nil` around it all and the body is an implicit `tagbody` so you can leap around in the same way you can with `do` and so on.  You can also use `escaping`.  Declarations at the start of the body are lifted to where they belong.  Initial bindings are in parallel for `looping`, in serial for `looping*`.  Here's a program which is not known to halt for all arguments:
+**`looping`**  and **`looping*`**  are looping constructs with implicit stepping: `(looping ((a 1) b) ...)` will bind `a` to `1` and `b` to `nil` and then the values of the last form in the body is used to step the values.  There is no termination clause, but there is an implicit block named `nil`  The body of these forms is *not* wrapped in an implicit `tagbody` (it's a `progn` in fact), so you can't jump around in it like you can with `do`.  You can also use `escaping`.  Declarations at the start of the body are lifted to where they belong.  Initial bindings are in parallel for `looping`, in serial for `looping*`.  Here's a program which is not known to halt for all arguments:
 
 ```lisp
 (defun collatz (n)
@@ -190,6 +199,23 @@ There are starred forms of all these macros which bind sequentially, for a total
               (1+ (* m 3)))
             (+ c 1))))
 ```
+
+**`looping/values`** and is a looping construct which use multiple values and then implicit stepping like `looping`.    Variables are bound as follows:
+
+- `(looping/values ((<v> ...) <form>) ...)` will bind the `<v>`s to the multiple values of `<form>`.
+- `(looping/values ((<v> ...) <form> ...) ...)` will bind the `<v>`s to the combined multiple values of all of the `<form>`s.
+
+Once the variables are bound eveything is exactly like `looping`: it is only the initial binding which is different.
+
+**`looping/values*`** is like `looping/values` except that multiple sets of variables can be bound, each set being in the scope of all the previous sets.  So
+
+```lisp
+(looping/values* (((a b) (values 1 2))
+                  ((c d) (values 3 a)))
+  (return (values a b c d)))
+```
+
+will evaluate to `1 2 3 1` for instance (and will not loop at all).
 
 **`escaping`** provides a general named escape construct.  `(escaping (<escaper> &rest <defaults>) ...)` binds `<escaper>` as a local function which will immediately return from `escaping`, returning either its arguments as multiple values, or the values of `<defaults>` as multiple values.  The forms in `<defaults>` are not evaluated if they are not used: if they are evaluated they're done in their lexical environment but in the dynamic environment where the escape function is called.
 
@@ -503,9 +529,413 @@ The readtable constructed by `make-sb-readtable` lets you read forms like `[...]
 
 `sb-readtable` lives in `org.tfeb.toys.sb-readtable` and provides `org.tfeb.toys.sb-readtable`.
 
+## Not really locatives: `locatives`
+Zetalisp had special things called *locatives* which were a bit like pointers.  I can't remember how they worked but they needed hardware support I am fairly sure.  What this code does is invent an object called a 'locative', constructed with the `locative` macro, which encapsulates a reference to a place.  `locf` will then retrieve the value of that place and `(setf locf)` will store a value in it.  As an example:
+
+```lisp
+> (let* ((x (list 1 2 3))
+         (loc (locative (cdr x))))
+    (locf loc))
+(2 3)
+
+> (let* ((x (list 1 2 3))
+         (loc (locative (cdr x))))
+    (setf (locf loc) 4)
+    x)
+(1 . 4)
+```
+
+This works quite generally: given
+
+```lisp
+(defun foo ()
+  (let ((y 8))
+    (bar (locative y))
+    y))
+
+(defun bar (loc)
+  (setf (locf loc) 3))
+```
+
+then
+
+```lisp
+> (foo)
+3
+```
+
+**`locative`** creates a locative to a place.
+
+**`locf`** retrieves the value of the place referenced by a locative.
+
+**`(setf locf)`** updates the value of the place referenced by a locative.
+
+**`with-locatives`** wraps some symbol macros around locatives to make them look like variables.
+
+As an example of `with-locatives`, `bar` above could be written as:
+
+```lisp
+(defun bar (loc)
+  (with-locatives ((l loc))
+    (setf l 3)))
+```
+
+or, if you don't want a new name for the locative:
+
+```lisp
+(defun bar (loc)
+  (with-locatives (loc)
+    (setf loc 3)))
+```
+
+Locatives are, of course, implemented by functions which capture the appropriate lexical scope where they are created.  They have indefinite extent as you would expect, although they're most often useful.
+
+`locatives` lives in `org.tfeb.toys.locatives` and provides `org.tfeb.toys.locatives`.  It will probably end up in my hax repo.
+
+## Simple logging: `slog`
+`slog` is based on an two observations about the Common Lisp condition system:
+
+- conditions do not have to represent errors, or warnings, but can just be a way of a program saying 'look, something interesting happened';
+- handlers can decline to handle a condition, and in particular handlers are invoked *before the stack is unwound*.
+
+Well, saying 'look, something interesting happened' is really quite similar to what logging systems do, and `slog` is built on this idea.
+
+`slog` is the *simple* logging system: it provides (or will provide, when it's finished) a framework on which logging can be built but does not itself provide a vast category of log severities &c.  This can be built on it.
+
+### Almost a simple example
+Given
+
+```lisp
+(defvar *log-stream* nil)
+
+(define-condition my-log-entry (simple-log-entry)
+  ((priority :initform 0
+             :initarg :priority
+             :reader log-entry-priority)))
+
+(defun foo (n)
+  (logging ((my-log-entry
+             (lambda (entry)
+               (when (> (log-entry-priority entry) 1)
+                 (slog-to *log-stream* entry))))
+            (t
+             "/tmp/my.log"))
+    (bar n)))
+
+(defun bar (n)
+  (dotimes (i n)
+    (if (evenp i)
+        (slog "i is ~D" i)
+      (slog 'my-log-entry
+            :format-control "i is ~D"
+            :format-arguments (list i)
+            :priority i))))
+```
+
+then
+
+```lisp
+> (foo 10)
+```
+
+Will cause `/tmp/my.log` to have text like the following appended to it:
+
+```lisp
+3862463894.708 i is 0
+3862463894.709 i is 1
+3862463894.709 i is 2
+3862463894.709 i is 3
+3862463894.709 i is 4
+3862463894.709 i is 5
+3862463894.709 i is 6
+3862463894.709 i is 7
+3862463894.709 i is 8
+3862463894.709 i is 9
+```
+
+The logging format is configurable of course: the numbers are high-precision universal-times, which in the implementation I am using are accurate to 1/1000s.
+
+On the other hand, this:
+
+```lisp
+> (let ((*log-stream* *standard-output*))
+    (foo 10))
+```
+
+Will cause `/tmp/my.log` to be appended to and the following to be printed:
+
+```lisp
+3862464054.581 i is 3
+3862464054.581 i is 5
+3862464054.581 i is 7
+3862464054.581 i is 9
+```
+
+The same results could be obtained by this code:
+
+```lisp
+(defun foo (n)
+  (logging ((my-log-entry
+             (lambda (entry)
+               (when (> (log-entry-priority entry) 1)
+                 (slog-to *log-stream* entry)))
+             "/tmp/my.log"))
+    (bar n)))
+
+(defun bar (n)
+  (dotimes (i n)
+    (slog 'my-log-entry
+          :format-control "i is ~D"
+          :format-arguments (list i)
+          :priority (if (oddp i) i 0))))
+```
+
+In this case `logging` will log to two destinations for `my-log-entry`.
+
+### Log entries
+`log-entry` is a condition type which should be an ancestor of all log entry conditions.  It has a single reader function: `log-entry-internal-time`, which will retrieve the internal real time when the log entry was created.  Log formatters use this.
+
+**`simple-log-entry`** is a subtype of both `log-entry` and `simple-condition`: it's the default log entry type when the `datum` argument to the two logging functions is a string.
+
+**`once-only-log-entry`** is a condition type which will be logged to at most one destination.
+
+### Logging functions
+**`(slog datum [arguments ...])`** takes arguments which denote a condition of default type `simple-log-entry` and signals that condition.  The sense in which the 'arguments denote a condition' is exactly the same as for `signal` &c, except that the default condition type is `simple-log-entry`.
+
+**`(slog-to destination datum [arguments ...])`** creates a log entry as `slog` does, but then rather than signalling it logs it directly to `destination`.  `slog-to` is what ends up being called when logging destinations are specified by the `logging` macro, but you can also call it yourself.
+
+### Log destinations and `slog-to`
+The `logging` macro and the `slog-to` generic function know about *log destinations*.  Some types of these are predefined, but you can extend the notion of what a log destination is either by defining methods on `slog-to` (see below for caveats) or, perhaps better, by providing a *fallback destination handler* which `slog-to` will call for destination handlers it does not have specialised methods for.  This fallback handler can be bound dynamically.
+
+The destinations that `slog` knows about already are:
+
+- streams -- the report is written to the stream;
+- strings or pathnames designate filenames which are opened if needed and then the report written to the resulting stream (see below on file handling);
+- function designators -- the function is called to handle the entry;
+- the symbol `nil` causes the entry to be discarded;
+- any other destination type invokes the fallback handler (see below).
+
+Generally `slog-to` tries to return the condition object, however in the case where the destination is a function it returns whatever the function returns, and in the case where it calls the fallback handler its value is whatever that returns.  It's probably not completely safe to rely on its return value.
+
+You can define methods on `slog-to` to handle other destination classes, or indeed log entry classes.  Caveats:
+
+- `slog-to` has an argument precedence order of `(datum destination)`, which is the inverse of the default;
+- methods on `slog-to` should not be defined only for classes you define, and not for any standard CL classes or any classes defined by `slog` itself.
+
+**`*fallback-log-destination-handler*`** is the fallback log destination handler.  If bound to a function, then `slog-to` will, by default, call this function with three arguments: the destination, the log entry, and a list of other arguments passed to `slog-to`.  The function is assumed to handle the entry and its return value or values are returned by `slog-to`.  The default value of this variable is `nil` which will cause `slog-to`to signal an error.
+
+### Log entry formats
+In the case of destinations which end up as streams, the format of what is written into the stream is controlled by `*log-entry-formatter*`.
+
+**`*log-entry-formatter*`** is bound to a function of two arguments: a destination stream and the log entry.  It is responsible for writing the log entry to the stream.  The default value of this writes lines which consist of a high-precision version of the universal time (see below), a space, and then the printed version of the log entry, as defined by its report function.  This variable can be redefined or bound to be any other function.
+
+**`default-log-entry-formatter`** is a function which returns the default value of `*log-entry-formatter*`.
+
+### The `logging` macro
+**`(logging ([(tyespec destination ...) ...]) form ...)`** establishes dynamic handlers for log entries which will log to the values of the specified destinations.  Each `typespec` is as for `handler-bind`, except that the type `t` is rewritten as `log-entry`, which makes things easier to write.  Any type mentioned in `typespec` must be a subtype of `log-entry`.  The value of each destination is then found, pathnames being canonicalized (see below for pathname handling) and these values are used as the destinations for calls to `slog-to`.  As an example the expansion of the following form:
+
+```lisp
+(logging ((t "foo"
+             *log-stream*))
+  ...)
+```
+
+is similar to this:
+
+```lisp
+(closing-opened-log-files ()
+  (handler-bind ((log-entry
+                  (let ((d1 (canonicalize-destination "foo"))
+                        (d2 (canonicalize-destination *log-stream*)))
+                    (lambda (e)
+                      (slog-to d1 e)
+                      (slog-to d2 e)))))
+  ...))
+```
+
+where `d1`, `d2` and `e` are gensyms, and the (internal) `canonicalize-destination` function will return an absolute pathname for arguments which are strings or pathnames and leave others untouched.  See below for `closing-opened-log-files`.
+
+The result of this is that `logging` behaves as if the destinations were lexically scoped.  So for instance this will not 'work':
+
+```lisp
+(defvar *my-destination* nil)
+
+(let ((*my-destination* "my.log"))
+  (logging ((t *my-destination*))
+    (foo)))
+
+(defun foo ()
+  (setf *my-destination* nil)
+  (slog "foo"))
+```
+
+The log output will still go to `my.log`.  If you want this sort of behaviour it's easy to get: just use a function as a destination:
+
+```lisp
+(let ((*my-destination* "my.log"))
+  (logging ((t (lambda (e)
+                 (slog-to *my-destination* e))))
+    (foo)))
+```
+
+And now modifications or bindings of `*my-destination*` will take effect.
+
+One important reason for this behaviour of `logging` is to deal with this problem:
+
+```lisp
+(logging ((t "foo.log"))
+  (foo))
+
+(defun foo ()
+  (slog "foo")
+  ... change working directory ...
+  (slog "bar"))
+```
+
+Because the absolute pathname of `foo.log`is computed and stored at the point of the logging macro you won't end up logging to multiple files: all the log entries will go to whatever the canonical version of `foo.log` was at the point that `logging` appeared.
+
+Finally note that calls to `slog` are completely legal but will do nothing outside the dynamic extent of a `logging` macro[^5], but `slog-to` will work quite happily and will write log entries.  This includes when given pathname arguments: it is perfectly legal to write code which just calls `(slog-to "/my/file.log" "a message")`.  See below on file handling.
+
+### File handling
+For log destinations which correspond to files, `slog` goes to some lengths to try and avoid open streams leaking away and to make sure there is a single stream open to each log file.  This is not as simple as it looks as `slog-to` can take a destination argument which is a filename, so that users don't have to write a mass of code which handles streams, and there's no constraint that `slog-to` must be called within the dynamic extent of a `logging` form.
+
+Behind the scenes there is a map between absolute pathnames and the corresponding streams.  Both `logging` and `slog-to` convert any destinations which look like pathnames to absolute pathnames if they are not already and store them in this map.  There are then functions and a macro which handle this map for you.
+
+**`closing-opened-log-files`** is a macro which establishes a saved state of the map of files to streams.  On exit it will close any log file streams added to the map within its dynamic extent (using `unwind-protect` in the obvious way) and restore the saved state (this is all done using special variables in the obvious way so is thread-safe).  So for instance
+
+```lisp
+(closing-opened-log-files ()
+  (slog-to "foo.log" "here"))
+```
+
+will close the open stream to `foo.log` if `slog-to` opened it.  The full syntax is
+
+```lisp
+(closing-opened-log-files (&key reporter abort)
+  ...)
+```
+
+Where `abort`is simply passed to the `close` calls.  `reporter`, if given, should be a function which will be called with the name of each file close.
+
+`logging` expands into something which uses `closing-opened-log-files`.
+
+**`current-log-files`** is a function which will return two values: a list of the current open log files and a list of the current log files which have been closed.   It has a single keyword argument:
+
+-`all`, if given as true will  cause it to return the elements of the whole list, while otherwise it will return lists just back to the closest surrounding `closing-opened-log-files`.
+
+**`close-open-log-files`** will close currently open log files, returning two lists: the list of files that were open and the list of files which were already closed.  It takes three keyword arguments:
+
+- `abort`is passed as the `abort` keyword to `close`;
+- `all` is as for `current-log-files`;
+- `reset`, if true, will reset the map to the save point of the nearest `closing-open-log-files` (or completely if there is no nearest).
+
+**`flush-open-log-file-streams`** will flush open log file streams to their files.   It returns a list of the filenames streams were flushed to.  It has two keyword arguments:
+
+- `all` is as for `current-log-files`;
+- `wait`, if true, will cause it to call `finish-output` rather than `force-output`.
+
+Note that it is perfectly OK to close a log file stream whenever you like: the system will simply reopen the file if it needs to.  This is fine for instance:
+
+```lisp
+(logging ((t "/tmp/file.log"))
+  (slog "foo")
+  (close-open-log-files)
+  (slog "bar"))
+```
+
+What will happen is that the handler will open the file when handling the first condition raised by `slog`, the file will be close, and then the handler will reopen it.  You can see this at work: given
+
+```lisp
+(defun print-log-files (prefix)
+  (multiple-value-bind (opened closed) (current-log-files)
+    (format t "~&~Aopen   ~{~A~^ ~}~%" prefix opened)
+    (format t "~&~Aclosed ~{~A~^ ~}~%" prefix closed)))
+```
+
+then
+
+```lisp
+> (logging ((t "/tmp/file.log"))
+    (print-log-files "before ")
+    (slog "foo")
+    (print-log-files "after slog ")
+    (close-open-log-files)
+    (print-log-files "after close ")
+    (slog "bar")
+    (print-log-files "after close "))
+before open
+before closed
+after slog open   /tmp/file.log
+after slog closed
+after close open
+after close closed /tmp/file.log
+after close open   /tmp/file.log
+after close closed
+nil
+```
+
+If you call `slog-to` with a filename destination*outside* the dynamic extent of `logging` or `closing-opened-log-files` then you perhaps want to call `(close-open-log-files :reset t)` every once in a while as well (the `reset` argument doesn't really matter, but it cleans up the  map).
+
+Finally note that this mechanism is only about filename destinations: if you log to stream destinations you need to manage the streams as you normally would.  The purpose of it is so you can simply not have to worry about the streams but just specify what log file(s) you want written.
+
+### Precision time
+`slog` makes an attempt to write log entries with a 'precision' version of CL's universal time.  It does this by calibrating internal real time against universal time when loaded (this means that loading `slog` takes at least a second and can take up to two seconds or more) and then using this calibration to record times with the precision of internal time.  There is one function which is exposed for this.
+
+**`get-precision-universal-time`** returns three values:
+
+- the best idea of the precise universal time it can work out, by default as a rational number;
+- the denominator of this quantity (in the current implementation this is `internal-time-units-per-second` of course);
+- the number of decimal places to which this quantity should be formatted.
+
+The last value is just `(ceiling (log denom 10))` where `denom` is the second value, but it saves working it out (and it's computed once, at load time).
+
+It has two keyword arguments:
+
+- `it` is the internal real time for to return the precision time for, which by default is `(get-internal-real-time)`;
+- `type` tells you what type to return, and can be `rational` or `ratio` to return a rational, `float` or `double-float` to return a double float, and finally `single-float` to return a single float.
+
+*Do not use the `single-float` type*: single floats don't have enough precision to be useful!
+
+For example:
+
+```lisp
+> (get-precision-universal-time)
+3862739452211/1000
+1000
+3
+
+> (get-precision-universal-time)
+1931369727853/500
+1000
+3
+
+> (get-precision-universal-time :type 'double-float)
+3.862739466635D9
+1000
+3
+```
+
+There are some sanity tests for this code which are run on loading `slog`, because I'm not entirely convinced I have got it right.  If you get warnings on load this means it is almost certainly wrong.
+
+You can use `get-precision-universal-time` to write your own formatters, using `log-entry-internal-time` to get the time the entry was created.
+
+### Package, module
+`slog` lives in and provides `:org.tfeb.toys.slog`.
+
+### Notes
+`slog` needs to know the current working directory in order to make pathnames absolute.  By default it uses ASDF's function for this, but if you don't use ASDF it has its own which will work for a small number of implementations and has a terrible (and wrong) fallback.  It will warn at compile/load time if it needs to use the terrible fallback: if it does this tell me how to know this in your implementation and I'll add a case for it.
+
+I'm not completely convinced by the precision time code.
+
+`slog` is `slog` not `log` because `log` is `log`.  `slog-to` is named in sympathy.
+
+Logging to pathnames rather than explicitly-managed streams may be a little slower, but seems now to be pretty close.
+
+`slog` will *certainly* turn into something which isn't a toy fairly soon: consider this an ephemeral version.
+
 ---
 
-The TFEB.ORG Lisp toys are copyright 1990-2021 Tim Bradshaw.  See `LICENSE` for the license.
+The TFEB.ORG Lisp toys are copyright 1990-2022 Tim Bradshaw.  See `LICENSE` for the license.
 
 ---
 
@@ -516,3 +946,5 @@ The TFEB.ORG Lisp toys are copyright 1990-2021 Tim Bradshaw.  See `LICENSE` for 
 [^3]:	I once had a much more elaborate system along these lines based around having looked at, I think, C++'s version of this sort of idea (or was it Java's?  I forget), and this system did force friendship relations to be bidirectional.  I probably still have that code somewhere, and I might one day revive it.
 
 [^4]:	There was a previous `fluids` module.  The name 'fluid' comes from Cambridge Lisp / Standard Lisp, although it might go back further than that.  In those languages you would declare a variable 'fluid' which told the compiler that the full dynamic-binding semantics for it should be kept, even in compiled code.  Of course for both those languages compiled code and interpreted code often had different semantics: I am pretty sure that *all* variables in interpreted code were implicitly fluid.
+
+[^5]:	Well: you could write your own `handler-bind` / `handler-case` forms, but don't do that.

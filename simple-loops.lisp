@@ -1,7 +1,7 @@
 ;;;; Some simple loops, useful with collecing
 ;;;
 
-;;; Copyright 2021 by me, Tim Bradshaw, and may be used for any
+;;; Copyright 2021, 2022 by me, Tim Bradshaw, and may be used for any
 ;;; purpose whatsoever by anyone. It has no warranty whatsoever. I
 ;;; would appreciate acknowledgement if you use it in anger, and I
 ;;; would also very much appreciate any feedback or bug fixes.
@@ -15,10 +15,11 @@
 
 #+org.tfeb.tools.require-module
 (org.tfeb.tools.require-module:needs
- :org.tfeb.hax.collecting)
+ :org.tfeb.hax.collecting
+ :org.tfeb.hax.iterate)
 
 (defpackage :org.tfeb.toys.simple-loops
-  (:use :cl :org.tfeb.hax.collecting)
+  (:use :cl :org.tfeb.hax.collecting :org.tfeb.hax.iterate)
   (:export
    #:doing #:doing*
    #:passing #:passing*
@@ -26,6 +27,7 @@
    #:failing #:failing*
    #:do-failing #:do-failing*
    #:looping #:looping*
+   #:looping/values #:looping/values*
    #:escaping))
 
 (in-package :org.tfeb.toys.simple-loops)
@@ -57,7 +59,13 @@
   (multiple-value-bind (vars inits steppers) (parse-clauses clauses)
     `(,(if sequential 'do* 'do)
       ,(mapcar #'list vars inits steppers)
-      (,test (values ,@(if (null values) vars values)))
+      (,test ,(case (length values)
+                (0
+                 `(values ,@vars))
+                (1
+                 (first values))
+                (otherwise
+                `(multiple-value-call #'values ,@values))))
       ,@forms)))
 
 (defmacro doing ((&rest clauses) (test &rest values) &body forms)
@@ -72,9 +80,10 @@ This is like DO, but each variable binding may be one of
 - (<var> <init> <step>) which binds to <init> and steps to value of
   <step>.
 
-If no values are specified then the current values of the bindings are
-returned as multiple values.  If more than one value is specified then
-all of them are returned as multiple values.
+If no value forms are specified then the current values of the
+bindings are returned as multiple values.  If more than one value form
+is specified then the combined multiple values of all of them are
+returned.
 
 This expands into DO, so all the things that are true of DO are true
 here: the body is a TAGBODY, and there is a block named NIL wrapped
@@ -84,6 +93,13 @@ around the form so (RETURN ...) will work."
 (defmacro doing* ((&rest clauses) (test &rest values) &body forms)
   "A variant of DO*: see DOING"
   (expand-doing clauses test values forms :sequential t))
+
+#+LispWorks
+(progn
+  ;; DOING and DOING* need special rules to indent the test/return
+  ;; clause under the bindings clauses
+  (editor:setup-indent "doing" 2 2 7)
+  (editor:setup-indent "doing*" 2 2 8))
 
 (defun expand-simple-loop (clauses forms &key (sequential nil) (test-at-end nil)
                                    (negated nil))
@@ -148,6 +164,17 @@ around the form so (RETURN ...) will work."
   "Like PASSING but test is inverted and at the end, and binding is sequential"
   (expand-simple-loop clauses forms :negated t :test-at-end t :sequential t))
 
+(defun parse-simple-body (decls/forms)
+  ;; Yet another
+  (with-collectors (decl body)
+    (do* ((forms decls/forms (rest forms))
+          (this (first forms) (first forms)))
+         ((null forms))
+      (if (and (consp this)
+               (eql (first this) 'declare))
+          (decl this)
+        (body this)))))
+
 (defun expand-looping (clauses decls/forms &key (sequential nil))
   (let ((variables (mapcar (lambda (clause)
                              (typecase clause
@@ -158,24 +185,15 @@ around the form so (RETURN ...) will work."
                                   (otherwise (error "bad clause ~S" clause))))
                                (t (error "mutant clause ~S" clause))))
                            clauses)))
-    (multiple-value-bind (decls body)
-        (with-collectors (decl body)
-          (do* ((forms decls/forms (rest forms))
-                (this (first forms) (first forms)))
-               ((null forms))
-            (if (and (consp this)
-                     (eql (first this) 'declare))
-                (decl this)
-              (body this))))
-      (let ((start (make-symbol "START")))
+    (multiple-value-bind (decls forms) (parse-simple-body decls/forms)
+      (let ((<start> (make-symbol "START")))
         `(,(if sequential 'let* 'let) ,clauses
-           (declare (ignorable ,@variables))
            ,@decls
            (block nil
              (tagbody
-              ,start
-              (multiple-value-setq ,variables (progn ,@body))
-              (go ,start))))))))
+              ,<start>
+              (multiple-value-setq ,variables (progn ,@forms))
+              (go ,<start>))))))))
 
 (defmacro looping ((&rest clauses) &body decls/forms)
   "A simple loop construct
@@ -185,13 +203,75 @@ may be (<var> <init>) which binds <var> to <init>.  Each time through
 the loop the variables are updated by the values of the BODY.  The
 values of the last of the forms in DECLS/FORMS are used to update the
 variables.  There is no termination condition, but the forms are
-wrapped in a BLOCK named NIL in the usual way.  Initial variable
+wrapped in a block named NIL in the usual way.  Initial variable
 bindings are in parallel."
   (expand-looping clauses decls/forms))
 
 (defmacro looping* ((&rest clauses) &body decls/forms)
   "Like LOOPING but initial bindings are sequential"
   (expand-looping clauses decls/forms :sequential t))
+
+(defmacro looping/values* ((&rest clauses) &body decls/forms)
+  "A nested variant of LOOPING/VALUES
+
+Each clause in CLAUSES is of the form either ((<var> ...) <form>), in
+which case the <var>s will be bound to the multiple values of <form>,
+or ((<var> ...) <form> ...) which is the same as ((<var>)
+(multiple-value-vall #'values <form> ...)). Each clause happens
+sequentially, within the scope of bindings established by previous
+clauses.  The total set of the variables is then updated by the values
+of the last form in the body."
+  (unless (every (lambda (clause)
+                   (and (listp clause)
+                        (>= (length clause) 1)
+                        (listp (first clause))
+                        (every #'symbolp (first clause))))
+                 clauses)
+    (error "bad clauses ~S" clauses))
+  (multiple-value-bind (decls forms) (parse-simple-body decls/forms)
+    (let ((<start> (make-symbol "START"))
+          (all-variables (mapcan #'copy-list (mapcar #'first clauses))))
+      (if (null clauses)
+          `(locally
+             ,@decls
+             (block nil
+               (tagbody
+                ,<start>
+                (progn ,@forms)
+                (go ,<start>))))
+        (iterate next-clause ((clause (first clauses))
+                              (more-clauses (rest clauses)))
+          (destructuring-bind (variables &rest form/s) clause
+            (if (null more-clauses)
+                `(multiple-value-bind ,variables ,(if (= (length form/s) 1)
+                                                      (first form/s)
+                                                    `(multiple-value-call
+                                                         #'values ,@form/s))
+                     ,@decls
+                     (block nil
+                       (tagbody
+                        ,<start>
+                        (multiple-value-setq ,all-variables
+                            (progn ,@forms))
+                        (go ,<start>))))
+                `(multiple-value-bind ,variables ,(if (= (length form/s) 1)
+                                                      (first form/s)
+                                                    `(multiple-value-call
+                                                         #'values ,@form/s))
+                   ,(next-clause (first more-clauses)
+                                 (rest more-clauses))))))))))
+
+(defmacro looping/values (((&rest variables) &rest form/s) &body decls/body)
+  "Like LOOPING but with multiple values
+
+(looping/values ((<var> ...) <form>) ...) binds the <var>s to the
+values of <form> and hhen updates them with the values of the last
+form in the body.  (looping/values ((<var> ...) <form> ...) binds the
+<var>s to the cobined values of all the <form>'s and hen updates them
+with the values of the last form in the body.  As with LOOPING there
+is no termination condition but the body is wrapped in a block named
+NIL so RETURN will work."
+  `(looping/values* ((,variables ,@form/s)) ,@decls/body))
 
 (defmacro escaping ((escape &rest defaults) &body forms)
   "Bind a local escape function
@@ -206,11 +286,11 @@ point the escape function is called.
 
 It won't work to call the escape function once control has left
 ESCAPING."
-  (let ((the-block (make-symbol (symbol-name escape))))
-    `(block ,the-block
+  (let ((<block> (make-symbol (symbol-name escape))))
+    `(block ,<block>
        (flet ((,escape (&rest args)
                 (declare (dynamic-extent args))
-                (return-from ,the-block
+                (return-from ,<block>
                   (if (null args)
                       (values ,@defaults)
                     (values-list args)))))
