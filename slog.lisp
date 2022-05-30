@@ -45,10 +45,23 @@
                   :reader log-entry-internal-time))
   (:documentation "all SLOG condition types inherit from this"))
 
+;;; Conditions are meant to be immutable, hence this little dance.
+;;;
+
 (define-condition once-only-log-entry (log-entry)
-  ((logged-p :initform nil
-            :accessor log-entry-logged-p))
+  ((logged :initform (cons nil nil)
+           :reader log-entry-logged))
   (:documentation "class of log entries which are logged once only"))
+
+(defgeneric log-entry-logged-p (log-entry)
+  (:method ((log-entry log-entry))
+   nil)
+  (:method ((log-entry once-only-log-entry))
+   (car (log-entry-logged log-entry))))
+
+(defgeneric (setf log-entry-logged-p) (new log-entry)
+  (:method (new (log-entry once-only-log-entry))
+   (setf (car (log-entry-logged log-entry)) new)))
 
 (define-condition simple-log-entry (log-entry simple-condition)
   ()
@@ -214,7 +227,8 @@
     :abort ,abort :reporter ,reporter))
 
 (defun compute-image-time-offsets (&optional (tries 3))
-  ;; This necessarily takes more than a second
+  ;; Return a universal time and the internal time at the point it
+  ;; ticked.  This necessarily takes more than a second.
   (looping ((try 1))
     (cond
      ((> try tries)
@@ -227,49 +241,65 @@
                ((> now start)
                 (unless (= now (1+ start))
                   (retry (1+ try))))))
-      (let ((start (get-universal-time))
-            (si (get-internal-real-time)))
+      (let ((start (get-universal-time)))
         (doing ((count 1 (1+ count))
-                (now (get-universal-time)))
+                (ib (get-internal-real-time))
+                (now (get-universal-time))
+                (ia (get-internal-real-time)))
                ((> now start)
-                ;; I need to think about this: it's some insane
-                ;; attempt to try and deal with the loop overhead.  10
-                ;; is a fudge factor and it's all just silly.
-                (let* ((sn (get-internal-real-time))
-                       (loop-cycle-internal-time (round (/ (- sn si) count 10))))
-                  (when (> now (1+ start))
-                    (warn "time moves slowly to its end")
-                    (retry (1+ try)))
-                  (return-from compute-image-time-offsets
-                    (list now (- sn loop-cycle-internal-time))))))))))
+                ;; clock has ticked
+                (when (> now (1+ start))
+                  (warn "time moves slowly to its end")
+                  (retry (1+ try)))
+                (return-from compute-image-time-offsets
+                  ;; Just average the two internal times we got to try and
+                  ;; get a reasonable offset
+                  (list now (round (+ ib ia) 2)))))))))
+
+(defconstant default-precision-time-rate
+  (min internal-time-units-per-second 1000))
 
 (defun get-precision-universal-time (&key
                                      (it (get-internal-real-time))
-                                     (type 'rational))
-  ;; Return three values: the most precise idea of the time we can
-  ;; work out, the denominator of the fractional part if exact and the
-  ;; number of significant decimal places (which just comes from the
-  ;; denominator but can be computed once).  This necessarily takes
-  ;; more than a second to load.
+                                     (type 'rational)
+                                     (rate default-precision-time-rate ratep)
+                                     (chide nil))
+  ;; Return two values: the most precise idea of the time we can work
+  ;; out, and the number of significant decimal places (which is just
+  ;; (log rate 10)
+  (when chide
+    (case type
+      ((single-float short-float)
+       (warn "~S is almost certainly not precise enough to be useful"
+             type)))
+    (when (> rate internal-time-units-per-second)
+      (warn "rate ~D is greater thant internal clock rate ~D"
+            rate internal-time-units-per-second)))
   (destructuring-bind (ut0 it0) (load-time-value (compute-image-time-offsets))
-    (let ((precision-time  (+ (/ (- it it0) internal-time-units-per-second) ut0)))
+    (let ((pt (+ ut0 (/ (round (* rate (- it it0)) internal-time-units-per-second)
+                        rate))))
       (values
        (ecase type
-         ((rational ratio)
-          precision-time)
-         ((float double-float)
-          (* precision-time 1.0d0))
-         ((single-float)
-           (* precision-time 1.0)))
-       internal-time-units-per-second
-       (load-time-value (ceiling (log internal-time-units-per-second 10)))))))
+         ((rational ratio) pt)
+         ((float double-float ) (* pt 1.0d0))
+         ((long-float) (* pt 1.0l0))
+         ((single-float) (* pt 1.0f0))
+         ((short-float) (* pt 1.0s0)))
+       rate
+       (cond
+        ((not ratep)
+         (load-time-value (ceiling (log default-precision-time-rate 10))))
+        ((= rate internal-time-units-per-second)
+         (load-time-value (ceiling (log internal-time-units-per-second 10))))
+        (t
+         (ceiling (log rate 10))))))))
 
 (defun default-log-entry-formatter ()
   (lambda (to log-entry)
-    (multiple-value-bind (seconds denominator decimal-places)
+    (multiple-value-bind (seconds rate decimal-places)
         (get-precision-universal-time :it (log-entry-internal-time log-entry)
                                       :type 'double-float)
-      (declare (ignore denominator))
+      (declare (ignore rate))
       (format to "~&~,VF ~A~%" decimal-places seconds log-entry))))
 
 (defvar *log-entry-formatter* (default-log-entry-formatter))
@@ -382,6 +412,8 @@
           (slog "precision time ~F is hopelessly different than ~D"
                 precision integer)
           (incf bads)))))
+    (when (> stepped 0)
+        (slog "~D stepped from ~D trials" stepped trials))
     (when (> bads 0)
       (warn "from ~D tries ~D precision times aren't" trials bads))
     (when (or (zerop goods)

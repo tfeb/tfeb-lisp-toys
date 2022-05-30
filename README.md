@@ -884,17 +884,25 @@ Finally note that this mechanism is only about filename destinations: if you log
 **`get-precision-universal-time`** returns three values:
 
 - the best idea of the precise universal time it can work out, by default as a rational number;
-- the denominator of this quantity (in the current implementation this is `internal-time-units-per-second` of course);
-- the number of decimal places to which this quantity should be formatted.
+- the rate of the precision time 'clock' in ticks per second (see below);
+ - the number of decimal places to which this quantity should be formatted if printed in units of seconds.
 
-The last value is just `(ceiling (log denom 10))` where `denom` is the second value, but it saves working it out (and it's computed once, at load time).
+The last value is just `(ceiling (log rate 10))` where `rate` is the second value, but it saves working it out (and if you don't supply the rate this is all computed at compile time).
 
-It has two keyword arguments:
+It has three keyword arguments:
 
 - `it` is the internal real time for to return the precision time for, which by default is `(get-internal-real-time)`;
-- `type` tells you what type to return, and can be `rational` or `ratio` to return a rational, `float` or `double-float` to return a double float, and finally `single-float` to return a single float.
+- `type` tells you what type to return, and can be one of
+	- `rational` or `ratio` return a rational,
+	- `float` or `double-float` return a double float,
+	- `single-float` returns a single float,
+	- `short-float` returns a short float;
+- `rate` specifies the rate at which the prevision time clock ticks, with the default currently being the minimum of `internal-time-units-per-second` and `1000`;
+- `chide`, if given will chide you about silly choices for the other arguments, in particular if you request a `rate` more than `internal-time-units-per-second`, or a silly float format.
 
-*Do not use the `single-float` type*: single floats don't have enough precision to be useful!
+*Do not use the `single-float` or `short-float` types*: single floats don't have enough precision to be useful!
+
+The default rate is the *minimum* of `internal-time-units-per-second` and `1000`: so precision time is supposed to be accurate to a millisecond at most.  It seems  obvious that the rate should instead be `internal-time-units-per-second` which may be much higher for, say, SBCL, but the effective tick rate for SBCL on at least some platforms is much much lower than `internal-time-units-per-second`, so making the default `rate` be that results in printing times with at least three junk digits at the end.
 
 For example:
 
@@ -904,13 +912,14 @@ For example:
 1000
 3
 
-> (get-precision-universal-time)
-1931369727853/500
+> (get-precision-universal-time :type 'double-float)
+3.862739466635D9
 1000
 3
 
-> (get-precision-universal-time :type 'double-float)
-3.862739466635D9
+> (get-precision-universal-time :type 'single-float :chide t)
+Warning: single-float is almost certainly not precise enough to be useful
+3.8629166E9
 1000
 3
 ```
@@ -924,6 +933,12 @@ You can use `get-precision-universal-time` to write your own formatters, using `
 
 ### Notes
 `slog` needs to know the current working directory in order to make pathnames absolute.  By default it uses ASDF's function for this, but if you don't use ASDF it has its own which will work for a small number of implementations and has a terrible (and wrong) fallback.  It will warn at compile/load time if it needs to use the terrible fallback: if it does this tell me how to know this in your implementation and I'll add a case for it.
+
+Condition objects are meant to be immutable (from the [CLHS](http://www.lispworks.com/documentation/HyperSpec/Body/m_defi_5.htm "define-condition"):
+
+> The consequences are unspecified if an attempt is made to assign the slots by using `setf`.
+
+So `once-only-log-entry` gets around this by storing a mutable cons in one of its slots which records if it's been logged.
 
 I'm not completely convinced by the precision time code.
 

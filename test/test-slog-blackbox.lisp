@@ -13,7 +13,8 @@
 
 (in-package :org.tfeb.toys.slog/test/blackbox)
 
-(define-test "org.tfeb.toys.slog/blackbox")
+(define-test "org.tfeb.toys.slog/blackbox"
+  :parent (:org.tfeb.toys.slog/test "org.tfeb.toys.slog"))
 
 (defun load-relative-pathname (p)
   (if *load-truename*
@@ -67,5 +68,3 @@
                             (logging ((t o2))
                               (setf o2 nil)
                               (slog "foo"))))))))
-
-(test "org.tfeb.toys.slog/blackbox" :report 'summary)

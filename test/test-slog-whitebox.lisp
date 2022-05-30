@@ -13,7 +13,8 @@
 
 (in-package :org.tfeb.toys.slog/test/whitebox)
 
-(define-test "org.tfeb.toys.slog/whitebox")
+(define-test "org.tfeb.toys.slog/whitebox"
+  :parent (:org.tfeb.toys.slog/test "org.tfeb.toys.slog"))
 
 (defun load-relative-pathname (p)
   (if *load-truename*
@@ -50,25 +51,13 @@
     (- (* ut internal-time-units-per-second) it)))
 
 (define-test ("org.tfeb.toys.slog/whitebox" "precision-time")
-  (true
-   ;; check that the computed offset is consistent (this test is slow)
-   (reduce (lambda (a b)
-             (etypecase a
-               (integer (and (= a b) a))
-               (null nil)))
-           (collecting
-             (dotimes (i 10)
-               (collect
-                (destructuring-bind (ut it)
-                    (compute-image-time-offsets)
-                  (- (* ut internal-time-units-per-second) it)))))))
   ;; A version of this is also in the source as basic sanity
   ;;
   (logging ((t *error-output*))
     (let ((goods 0)
           (stepped 0)
           (bads 0)
-          (trials 10000))
+          (trials 1000000))
       (dotimes (i trials)
         (let* ((integer (get-universal-time))
                (precision (get-precision-universal-time :type 'double-float))
@@ -84,12 +73,12 @@
             (slog "precision time ~F is hopelessly different than ~D"
                   precision integer)
             (incf bads)))))
-      (is = 0 bads
+      (when (> stepped 0)
+        (slog "~D stepped from ~D trials" stepped trials))
+      (is = bads 0
           "from ~D tries ~D precision times aren't" trials bads)
       (false (zerop goods)
              "no good results from ~D trials" trials)
       (is < 1/100 (/ stepped goods)
           "from ~D trials got ~D good times, but ~D stepped"
           trials goods stepped))))
-
-(test "org.tfeb.toys.slog/whitebox" :report 'summary)
