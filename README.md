@@ -19,7 +19,9 @@ The repo from which the toys are published was invented in 2021, but some of the
 All of the toys use *domain-structured names*: packages, modules, features and so on have names which start with a reversed DNS domain and then continue to divide further.  The prefix for all of the toys is `org.tfeb.toys`.  See [the TFEB.ORG tools documentation](https://github.com/tfeb/tfeb-lisp-tools#naming-conventions "TFEB.ORG tools / Naming conventions") for a little more on this.  If they move elsewhere, these names will change.
 
 ### The likely fate of some of the toys
-`simple-loops`will probably end up being in my hax repo.  `locatives` will likely end up there too, as will `fluids`.  `glex` I'm not sure abot.  `slog` will certainly become a hack once it's more complete.
+`locatives` will likely end up in my hax repo, as will `fluids`.  `glex` I'm not sure about.  `slog` will certainly become a hack once it's more complete.
+
+`simple-loops`, which formerly lived here, has now migrated to the hax repo.
 
 ---
 
@@ -82,7 +84,7 @@ CL only has global *special* variables, which are dynamically scoped.  But it's 
 
 **`defglex*`** is like `defparameter`: you can't omit the value and it is set each time.
 
-**`make-glex-readtable`** will construct a readtable in which `#$x` refers to a global lexical variable `x`.  It has three keyword arguments:
+**`make-glex-readtable`\*\* will construct a readtable in which `#$x` refers to a global lexical variable `x`.  It has three keyword arguments:
 
 - `from` is the readtable to copy, defaultly `*readtable*`;
 - `to` is the readtable to copy into, defaultly `nil`;
@@ -141,90 +143,6 @@ Composable readtable makers are almost but not quite simple to implement.  The b
 
 To deal with limitations like those that apply to character syntax, there are also 'special orders' which are simply lists of functions which get called.
 
-## Decomposing iteration: `simple-loops`
-Like a lot of people I have mixed feelings about `loop`.  For a long time I thought that, well, if I wasn't going to use `loop`, I'd need some other elaborate iteration system, although perhaps one which was more principled and extensible such as Richard C Waters' [Series](https://github.com/tfeb/series "Series")[^2].  And I am sure the CL community has invented other tools while I've not been watching.
-
-But now I think that this is, perhaps, chasing a mirage: it might be better *not* to have some vast all-encompassing iteration tool, but instead a number of smaller, independent, components.  For a long time I have written
-
-```lisp
-(collecting
-  (dotimes (...)
-    ...
-    (when ...
-      (collect ...)
-    ...))
-```
-
-in preference to `(loop ... when ... collect ... ...)` and `collecting` of course is more general:
-
-```lisp
-(collecting
-  (iterate search (...)
-    ...))
-```
-
-Can collect objects during a completely general recursive search, for instance.
-
-`simple-loops` provides a number of simple loop constructs which can be used with tools like [`collecting`](https://tfeb.github.io/tfeb-lisp-hax/#collecting-lists-forwards-and-accumulating-collecting "collecting"), [`iterate`](https://tfeb.github.io/tfeb-lisp-hax/#applicative-iteration-iterate "iterate") and any other tool, as well as a general named escape construct.
-
-**`doing`** and **`doing*`** are like `do` and `do*` except that bindings are more defaulted:
-
--  `<var>` means `(<var> nil nil)`;
-- `(<var> <init/step>)` means `(<var> <init/step> <init/step>)`;
-- `(<var> <init> <step>)` means what it currently does.
-
-In addition the values returned are both more defaulted and more flexible:
-
-- if no return value is specified then the current values of all the bindings are returned;
-- if a single form is specified then all its values are returned (this is just like `do`);
-- if there are more than a single form, then then all the values from all of them are returned.
-
-To get the same behaviour as, for instance, `(do (...) (<test>) ...)` you therefore need to say `(doing (...) (<test> nil) ...)`: `(doing (...) (<test>) ...)` will return the current values of all the variables.
-
-**`passing`** and **`failing`** are while and until loops which bind variables with the same defaulting as `doing`: `(passing ((x ...) (y ...)) ...)` will iterate until `(and x y)` is true and then return the values of `x` and `y`.  `failing` will iterate until they are *not* all true and then return their values.
-
-**`do-passing`** and **`do-failing`** are like `passing` and `failing` but the test is after the body, so they always iterate at least once.
-
-There are starred forms of all these macros which bind sequentially, for a total of six macros.
-
-**`looping`**  and **`looping*`**  are looping constructs with implicit stepping: `(looping ((a 1) b) ...)` will bind `a` to `1` and `b` to `nil` and then the values of the last form in the body is used to step the values.  There is no termination clause, but there is an implicit block named `nil`  The body of these forms is *not* wrapped in an implicit `tagbody` (it's a `progn` in fact), so you can't jump around in it like you can with `do`.  You can also use `escaping`.  Declarations at the start of the body are lifted to where they belong.  Initial bindings are in parallel for `looping`, in serial for `looping*`.  Here's a program which is not known to halt for all arguments:
-
-```lisp
-(defun collatz (n)
-  (looping ((m n) (c 1))
-    (when (= m 1)
-      (return c))
-    (values (if (evenp m)
-                (/ m 2)
-              (1+ (* m 3)))
-            (+ c 1))))
-```
-
-**`looping/values`** and is a looping construct which use multiple values and then implicit stepping like `looping`.    Variables are bound as follows:
-
-- `(looping/values ((<v> ...) <form>) ...)` will bind the `<v>`s to the multiple values of `<form>`.
-- `(looping/values ((<v> ...) <form> ...) ...)` will bind the `<v>`s to the combined multiple values of all of the `<form>`s.
-
-Once the variables are bound eveything is exactly like `looping`: it is only the initial binding which is different.
-
-**`looping/values*`** is like `looping/values` except that multiple sets of variables can be bound, each set being in the scope of all the previous sets.  So
-
-```lisp
-(looping/values* (((a b) (values 1 2))
-                  ((c d) (values 3 a)))
-  (return (values a b c d)))
-```
-
-will evaluate to `1 2 3 1` for instance (and will not loop at all).
-
-**`escaping`** provides a general named escape construct.  `(escaping (<escaper> &rest <defaults>) ...)` binds `<escaper>` as a local function which will immediately return from `escaping`, returning either its arguments as multiple values, or the values of `<defaults>` as multiple values.  The forms in `<defaults>` are not evaluated if they are not used: if they are evaluated they're done in their lexical environment but in the dynamic environment where the escape function is called.
-
-`escaping` is obviously a shim around `(block ... (return-from ...) ...)` and there are the same constraints on scope that blocks have: you can't call the escape function once control has left the form which established it.
-
-The `passing` family of functions *aren't* named `while` because they're not actually `while` loops as the bind variables and also I didn't want to take such a useful and short name: everyone knows what `(while (= x 3) ...)` means.
-
-`passing` and friends expand into `do` and `do*`, not `doing` and `doing*` but thy use the same clause-parser that`doing` and `doing*` do so their clauses work the same way.
-
 ## Hidden slots: `hidden-slots`
 Some people want slots in classes defined with `defclass` to be private to those objects.  There is, of course, nothing stopping you saying that they are: CLOS is best regarded as a system for *writing* object systems.  If you want things to look like a message-passing system then CLOS can let you do that, if you want slots to be private then CLOS can do that.  In the presence of macros and an effectively-standard MOP you can construct whatever system suits you as *The Art of the Metaobject Protocol* makes very clear: CL is a language which assumes its users are humans, not sheep.  What's more, CL is so powerful and expressive that these systems can be written in minutes, not hours or days: `hidden-slots` took well under an hour to write in its initial, fully-functional version.
 
@@ -249,7 +167,7 @@ will result in instances of `bar` having two slots, not one.  `defclass/hs` howe
   (:friends foo))
 ```
 
-will result in instances of `bar` having only one slot.  Friendship is unilateral: a class can't say who it will allow to be its friends[^3].  Note that friendship has nothing to do with inheritance:
+will result in instances of `bar` having only one slot.  Friendship is unilateral: a class can't say who it will allow to be its friends[^2].  Note that friendship has nothing to do with inheritance:
 
 ```lisp
 (defclass foo ()
@@ -278,7 +196,7 @@ It does not work to say you are the friend of a class which is not yet defined, 
 ## Dynamic bindings for fields: `fluids`
 Programmers in languages which don't have dynamic variables inevitably have to invent them, either by some horrible non-thread-safe shallow-binding approach or more nicely.   Quite often, of course, people writing in such languages don't even *know* they're reinventing dynamic variables: such is the state of education in computing.
 
-Python doesn't have dynamic variables, but it does have enough portable mechanism to invent them, with a thread-safe deep-binding approach.  A while ago when I was writing Python for my living I did that, in a module called `nfluids`[^4], which I should get around to publishing.  Fluids in this implementation were functions which looked up their value on a secretly maintained, thread-local, binding stack which was maintained by `with ...` constructs, thus giving you deep binding.
+Python doesn't have dynamic variables, but it does have enough portable mechanism to invent them, with a thread-safe deep-binding approach.  A while ago when I was writing Python for my living I did that, in a module called `nfluids`[^3], which I should get around to publishing.  Fluids in this implementation were functions which looked up their value on a secretly maintained, thread-local, binding stack which was maintained by `with ...` constructs, thus giving you deep binding.
 
 A nice feature of this approach is that it solves the 'dynamically bind a field/slot in an object' problem: a fluid doesn't change, but the binding it accesses does, since the fluid is essentially a key into the binding stack.  And in a Lisp-1, like Python, it's also pretty elegant.
 
@@ -693,7 +611,7 @@ The same results could be obtained by this code:
 In this case `logging` will log to two destinations for `my-log-entry`.
 
 ### Log entries
-`log-entry` is a condition type which should be an ancestor of all log entry conditions.  It has a single reader function: `log-entry-internal-time`, which will retrieve the internal real time when the log entry was created.  Log formatters use this.
+**`log-entry`** is a condition type which should be an ancestor of all log entry conditions.  It has a single reader function: `log-entry-internal-time`, which will retrieve the internal real time when the log entry was created.  Log formatters use this.
 
 **`simple-log-entry`** is a subtype of both `log-entry` and `simple-condition`: it's the default log entry type when the `datum` argument to the two logging functions is a string.
 
@@ -794,7 +712,7 @@ One important reason for this behaviour of `logging` is to deal with this proble
 
 Because the absolute pathname of `foo.log`is computed and stored at the point of the logging macro you won't end up logging to multiple files: all the log entries will go to whatever the canonical version of `foo.log` was at the point that `logging` appeared.
 
-Finally note that calls to `slog` are completely legal but will do nothing outside the dynamic extent of a `logging` macro[^5], but `slog-to` will work quite happily and will write log entries.  This includes when given pathname arguments: it is perfectly legal to write code which just calls `(slog-to "/my/file.log" "a message")`.  See below on file handling.
+Finally note that calls to `slog` are completely legal but will do nothing outside the dynamic extent of a `logging` macro[^4], but `slog-to` will work quite happily and will write log entries.  This includes when given pathname arguments: it is perfectly legal to write code which just calls `(slog-to "/my/file.log" "a message")`.  See below on file handling.
 
 ### File handling
 For log destinations which correspond to files, `slog` goes to some lengths to try and avoid open streams leaking away and to make sure there is a single stream open to each log file.  This is not as simple as it looks as `slog-to` can take a destination argument which is a filename, so that users don't have to write a mass of code which handles streams, and there's no constraint that `slog-to` must be called within the dynamic extent of a `logging` form.
@@ -956,10 +874,8 @@ The TFEB.ORG Lisp toys are copyright 1990-2022 Tim Bradshaw.  See `LICENSE` for 
 
 [^1]:	Not quite, because it only really knows how to modify a (copy of) a readtable.
 
-[^2]:	This link is to my own copy.
+[^2]:	I once had a much more elaborate system along these lines based around having looked at, I think, C++'s version of this sort of idea (or was it Java's?  I forget), and this system did force friendship relations to be bidirectional.  I probably still have that code somewhere, and I might one day revive it.
 
-[^3]:	I once had a much more elaborate system along these lines based around having looked at, I think, C++'s version of this sort of idea (or was it Java's?  I forget), and this system did force friendship relations to be bidirectional.  I probably still have that code somewhere, and I might one day revive it.
+[^3]:	There was a previous `fluids` module.  The name 'fluid' comes from Cambridge Lisp / Standard Lisp, although it might go back further than that.  In those languages you would declare a variable 'fluid' which told the compiler that the full dynamic-binding semantics for it should be kept, even in compiled code.  Of course for both those languages compiled code and interpreted code often had different semantics: I am pretty sure that *all* variables in interpreted code were implicitly fluid.
 
-[^4]:	There was a previous `fluids` module.  The name 'fluid' comes from Cambridge Lisp / Standard Lisp, although it might go back further than that.  In those languages you would declare a variable 'fluid' which told the compiler that the full dynamic-binding semantics for it should be kept, even in compiled code.  Of course for both those languages compiled code and interpreted code often had different semantics: I am pretty sure that *all* variables in interpreted code were implicitly fluid.
-
-[^5]:	Well: you could write your own `handler-bind` / `handler-case` forms, but don't do that.
+[^4]:	Well: you could write your own `handler-bind` / `handler-case` forms, but don't do that.

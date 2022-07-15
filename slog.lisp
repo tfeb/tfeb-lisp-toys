@@ -9,13 +9,13 @@
 
 #+org.tfeb.tools.require-module
 (org.tfeb.tools.require-module:needs
- (:org.tfeb.toys.simple-loops :compile t)
+ (:org.tfeb.hax.simple-loops :compile t)
  (:org.tfeb.hax.collecting :compile t)
  (:org.tfeb.tools.feature-expressions :compile t))
 
 (defpackage :org.tfeb.toys.slog
   (:use :cl
-   :org.tfeb.toys.simple-loops :org.tfeb.hax.collecting
+   :org.tfeb.hax.simple-loops :org.tfeb.hax.collecting
    :org.tfeb.tools.feature-expressions)
   #+ASDF
   (:import-from "UIOP" #:getcwd)
