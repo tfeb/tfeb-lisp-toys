@@ -101,9 +101,9 @@
                `(decorating ,new-it :pre ,new-pre :post ,new-post))
               ((new-it new-pre)
                (:when (and (matchp new-pre (list-of (any)))))
-               `(decorating ,new-it :pre ,new-pre :post post))
+               `(decorating ,new-it :pre ,new-pre :post ,post))
               ((new-it)
-               `(decorating ,new-it :pre pre :post post))
+               `(decorating ,new-it :pre ,pre :post ,post))
               (otherwise
                (decorator-error "unexpected returns from decorator function for ~S"
                                 dispatcher-spec)))))))))
@@ -126,7 +126,6 @@
 ;;;
 
 (define-decorator-dispatcher inline (form &key pre &allow-other-keys)
-  (declare (ignore prefix))
   (destructuring-match form
     ((_ name . _)
      (values form (cons `(declaim (inline ,name)) pre)))
@@ -134,7 +133,6 @@
      (decorator-error "~S doesn't look like a definition" form))))
 
 (define-decorator-dispatcher notinline (form &key pre &allow-other-keys)
-  (declare (ignore prefix))
   (destructuring-match form
     ((_ name . _)
      (values form (cons `(declaim (notinline ,name)) pre)))
