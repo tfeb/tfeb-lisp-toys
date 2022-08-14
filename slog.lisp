@@ -11,11 +11,13 @@
 (org.tfeb.tools.require-module:needs
  (:org.tfeb.hax.simple-loops :compile t)
  (:org.tfeb.hax.collecting :compile t)
+ (:org.tfeb.hax.spam :compile t)
  (:org.tfeb.tools.feature-expressions :compile t))
 
 (defpackage :org.tfeb.toys.slog
   (:use :cl
    :org.tfeb.hax.simple-loops :org.tfeb.hax.collecting
+   :org.tfeb.hax.spam
    :org.tfeb.tools.feature-expressions)
   #+ASDF
   (:import-from "UIOP" #:getcwd)
@@ -366,6 +368,8 @@
              (mapcar #'ensure-log-entry-typespec (rest typespec)))))))
 
 (defmacro logging (clauses &body forms)
+  (unless (matchp clauses (list-of (cons-matches (any) (list-of (any)))))
+    (error "logging clauses ~S aren't" clauses))
   (let ((<log-entry> (make-symbol "LOG-ENTRY")))
     `(closing-opened-log-files ()
        (handler-bind
@@ -382,10 +386,10 @@
                        (let ,bindings
                          (lambda (,<log-entry>)
                            ,@(collecting
-                               (dolist (binding bindings)
-                                 (collect
-                                  `(slog-to ,(first binding)
-                                            ,<log-entry>))))))))))))
+                                  (dolist (binding bindings)
+                                    (collect
+                                     `(slog-to ,(first binding)
+                                               ,<log-entry>))))))))))))
          ,@forms))))
 
 

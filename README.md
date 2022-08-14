@@ -26,21 +26,22 @@ All of the toys use *domain-structured names*: packages, modules, features and s
 ---
 
 ## An iteration protocol: `for`
-This lets you define iterators for objects by defining methods on `iter` which typically returns a function.  `next` (another generic function) should then know how to get the next element from an iterator: for an iterator which is a function it just calls it.  `for` is a macro which will loop over objects, calling `iter` to make the iterator & `next` to get the next values.  There are also `range`s, and finally a `gather` macro which is a bit like Python's list comprehensions (or what I thought they were like in 2004).
+This lets you define iterators for objects by defining methods on `iterator` which typically returns a function.  `next` (another generic function) should then know how to get the next element from an iterator: for an iterator which is a function it just calls it with itself as an argument.  `for` is a macro which will loop over objects, calling `iterator` to make the iterator & `next` to get the next values.  Finally there is a `gather` macro which is a bit like Python's list comprehensions (or what I thought they were like in 2004).
 
-As an example the method on `iter` for lists is this:
+As an example a simplified method on `iterate` for lists could be:
 
 ```lisp
-(defmethod iter ((l list) &key)
-  (lambda ()
+(defmethod iterator ((l list) &key)
+  (lambda (self)
     (if l
-        (multiple-value-prog1
-            (values (car l) t)
-          (setf l (cdr l)))
-      (values nil nil))))
+        (values
+         (prog1 (first l)
+           (setf l (rest l)))
+         self)
+      (values nil exhausted-iterator))))
 ```
 
-(In fact it's `#'(lambda ...)` which tells you how old this code is.)  You could then gather the even integers in a list:
+And you could then gather the elements of a list which are odd numbers like this:
 
 ```lisp
 (gather (* x x)
@@ -49,7 +50,7 @@ As an example the method on `iter` for lists is this:
   when (oddp x))
 ```
 
-Note that `for` & `when` are not `loop`-style keywords: `gather` turns them into `(when ...)`, so they're just the normal CL macros:
+Note that `for` & `when` are not `loop`-style keywords: `gather` turns them into `(when ...)`, so they're just the normal CL macros[^1]:
 
 ```lisp
 (gather (* x x)
@@ -67,6 +68,8 @@ Note that `for` & `when` are not `loop`-style keywords: `gather` turns them into
 ```
 
 `for` lives in `org.tfeb.toys.for` and provides `:org.tfeb.toys.for`.
+
+I fairly heavily revised `for` in 2022: the protocol iterators support has partly changed,  the function formerly known as `iter` is now`iterator`, and there have been a number of other significant changes: the new version is not particularly compatible with the old one.
 
 ## Turning `case` into an explicit jump table: `ncase`
 `ncase` is just like `case`but it can turn `case` statements into explicit jump tables if they are large enough.  From the comments in the file:
@@ -135,7 +138,7 @@ See also fluids, below.
 ## Composable readtable makers: `composable-readtable-maker`
 Something I often find myself wanting to do is to make two or more changes to a readtable with the intention that these changes are orthogonal to each other.  Without writing special code each time this is hard to ensure.  Solving this problem is what composable readtable makers are for.
 
-A *readtable maker* is an object which encapsulates a set of changes to make to a readtable – it's almost but not quite a readtable factory[^1].  A *composable* readtable maker is a readtable maker which can be composed with another readtable maker to either produce a readtable maker which will be compatible with both, or signal an error if that is not possible.
+A *readtable maker* is an object which encapsulates a set of changes to make to a readtable – it's almost but not quite a readtable factory[^2].  A *composable* readtable maker is a readtable maker which can be composed with another readtable maker to either produce a readtable maker which will be compatible with both, or signal an error if that is not possible.
 
 Composing composable readtable makers produces a composable readtable maker which is compatible with all of them.  However, making a readtable from this object may still change it in incompatible ways: that problem isn't something I tried to solve.
 
@@ -167,7 +170,7 @@ will result in instances of `bar` having two slots, not one.  `defclass/hs` howe
   (:friends foo))
 ```
 
-will result in instances of `bar` having only one slot.  Friendship is unilateral: a class can't say who it will allow to be its friends[^2].  Note that friendship has nothing to do with inheritance:
+will result in instances of `bar` having only one slot.  Friendship is unilateral: a class can't say who it will allow to be its friends[^3].  Note that friendship has nothing to do with inheritance:
 
 ```lisp
 (defclass foo ()
@@ -196,7 +199,7 @@ It does not work to say you are the friend of a class which is not yet defined, 
 ## Dynamic bindings for fields: `fluids`
 Programmers in languages which don't have dynamic variables inevitably have to invent them, either by some horrible non-thread-safe shallow-binding approach or more nicely.   Quite often, of course, people writing in such languages don't even *know* they're reinventing dynamic variables: such is the state of education in computing.
 
-Python doesn't have dynamic variables, but it does have enough portable mechanism to invent them, with a thread-safe deep-binding approach.  A while ago when I was writing Python for my living I did that, in a module called `nfluids`[^3], which I should get around to publishing.  Fluids in this implementation were functions which looked up their value on a secretly maintained, thread-local, binding stack which was maintained by `with ...` constructs, thus giving you deep binding.
+Python doesn't have dynamic variables, but it does have enough portable mechanism to invent them, with a thread-safe deep-binding approach.  A while ago when I was writing Python for my living I did that, in a module called `nfluids`[^4], which I should get around to publishing.  Fluids in this implementation were functions which looked up their value on a secretly maintained, thread-local, binding stack which was maintained by `with ...` constructs, thus giving you deep binding.
 
 A nice feature of this approach is that it solves the 'dynamically bind a field/slot in an object' problem: a fluid doesn't change, but the binding it accesses does, since the fluid is essentially a key into the binding stack.  And in a Lisp-1, like Python, it's also pretty elegant.
 
@@ -712,7 +715,7 @@ One important reason for this behaviour of `logging` is to deal with this proble
 
 Because the absolute pathname of `foo.log`is computed and stored at the point of the logging macro you won't end up logging to multiple files: all the log entries will go to whatever the canonical version of `foo.log` was at the point that `logging` appeared.
 
-Finally note that calls to `slog` are completely legal but will do nothing outside the dynamic extent of a `logging` macro[^4], but `slog-to` will work quite happily and will write log entries.  This includes when given pathname arguments: it is perfectly legal to write code which just calls `(slog-to "/my/file.log" "a message")`.  See below on file handling.
+Finally note that calls to `slog` are completely legal but will do nothing outside the dynamic extent of a `logging` macro[^5], but `slog-to` will work quite happily and will write log entries.  This includes when given pathname arguments: it is perfectly legal to write code which just calls `(slog-to "/my/file.log" "a message")`.  See below on file handling.
 
 ### File handling
 For log destinations which correspond to files, `slog` goes to some lengths to try and avoid open streams leaking away and to make sure there is a single stream open to each log file.  This is not as simple as it looks as `slog-to` can take a destination argument which is a filename, so that users don't have to write a mass of code which handles streams, and there's no constraint that `slog-to` must be called within the dynamic extent of a `logging` form.
@@ -846,9 +849,6 @@ There are some sanity tests for this code which are run on loading `slog`, becau
 
 You can use `get-precision-universal-time` to write your own formatters, using `log-entry-internal-time` to get the time the entry was created.
 
-### Package, module
-`slog` lives in and provides `:org.tfeb.toys.slog`.
-
 ### Notes
 `slog` needs to know the current working directory in order to make pathnames absolute.  By default it uses ASDF's function for this, but if you don't use ASDF it has its own which will work for a small number of implementations and has a terrible (and wrong) fallback.  It will warn at compile/load time if it needs to use the terrible fallback: if it does this tell me how to know this in your implementation and I'll add a case for it.
 
@@ -866,16 +866,133 @@ Logging to pathnames rather than explicitly-managed streams may be a little slow
 
 `slog` will *certainly* turn into something which isn't a toy fairly soon: consider this an ephemeral version.
 
+### Package, module
+`slog` lives in and provides `:org.tfeb.toys.slog`.
+
+## Decorators
+Python has [a syntax which allows you to 'decorate' definitions](https://docs.python.org/3/reference/compound_stmts.html#function-definitions "Python decorators"):
+
+```python
+@f1(arg)
+@f2
+def foo (x):
+    return x
+```
+
+is equivalent to
+
+```python
+def foo (x):
+    return x
+foo = f1(arg)(f2(foo))
+```
+
+(Note that Python is a Lisp-1, so this makes sense.)
+
+`decorators` lets you do this, but it is in fact far more general: it lets you rewrite things in completely arbitrary ways.  So, for instance, here is how you might define a `traced` decorator:
+
+```lisp
+(define-decorator-dispatcher traced (fdef &key options &allow-other-keys)
+  (destructuring-match options
+    ((&key (to '*trace-output*)
+           (when 't))
+     (destructuring-match fdef
+       ((defun name arglist &body doc/decls/forms)
+        (:when (eq defun 'defun))
+        (multiple-value-bind (doc decls forms) (parse-docstring-body doc/decls/forms)
+          (let ((<when> (make-symbol "WHEN"))
+                (<s> (make-symbol "S")))
+            `(defun ,name ,arglist
+               ,@(if doc (list doc))
+               ,@decls
+               (let ((,<when> ,when)
+                     (,<s> ,to))
+                 (when ,<when>
+                   (format ,<s> "[~S" ',name))
+                 (multiple-value-prog1
+                     (progn
+                       ,@forms)
+                   (when ,<when>
+                     (format ,<s> "]~%" ',name))))))))
+       (otherwise
+        (decorator-error "not a function definition: ~S" fdef))))
+    (otherwise
+     (decorator-error "unexpected options for traced ~S" options))))
+```
+
+And now
+
+```lisp
+(defvar *traced* nil)
+
+#@(traced :when *traced*)
+(defun foo (x)
+  x)
+```
+
+is expanded to
+
+```lisp
+(defun foo (x)
+  (let ((#:when *tracing*) (#:s *trace-output*))
+    (when #:when (format #:s "[~S" 'foo))
+    (multiple-value-prog1
+        (progn x)
+      (when #:when (format #:s "]~%" 'foo)))))
+```
+
+**`make-decorator-readtable`** constructs a readtable with a dispatch macro, by default for `@`, for decorators.  Note that `@` will clash with `read-package` in my hax.
+
+**`define-decorator-dispatcher`** defines a decorator dispatcher.  Dispatchers take one mandatory argument which is the form they are decorating, and several keyword arguments:
+
+- `pre` is the current list of forms to be evaluated before the decorated form;
+- `post` is the current list of forms to be evaluated after the decorated form;
+- `options` is any options to the decorator -- in syntax like `#@(traced . options) <form>` it is the options, while in a form like `#@traced <form>` it is the empty list;
+- `prefix` is the prefix argument to the dispatch macro.
+
+Decorator dispatchers return one, two or three values:
+
+- one value is the rewritten form;
+- two values are the rewritten form and the new list of pre forms;
+- three values are the rewritten form, the new list of pre forms, and the new list of post forms.
+
+**`decorator-error`** is both the condition type of errors signalled by `decorators` and a function which will signal such an error taking a format string and format arguments.
+
+There are predefined decorators called `inline` and `notinline`.
+
+As well as decorators defined with `define-decorator-dispatcher` you can simply define functions which will be called.  The reason for `define-decorator-dispatcher` is just so that `inline` &c can work.
+
+### Notes
+In general a decorated form ends up expanding to
+
+```lisp
+(progn
+  <pre-form>
+  ...
+  <rewritten-form>
+  <post-form>
+  ...)
+```
+
+This is done so things work at the top level (in particular I did not want anything which ended up being `(let ((v (defun ...))) ... v)`, but it means that anything which adds post forms needs to be aware that the value of the form will be lost.
+
+`decorators` will probably stop being a toy soon.
+
+### Package, module
+`decorators` lives in and provides `:org.tfeb.toys.decorators`.
+
 ---
 
 The TFEB.ORG Lisp toys are copyright 1990-2022 Tim Bradshaw.  See `LICENSE` for the license.
 
 ---
 
-[^1]:	Not quite, because it only really knows how to modify a (copy of) a readtable.
+[^1]:	However `gather` can now be used as `(gather ... (for (x ...)) ...)` for instance.
 
-[^2]:	I once had a much more elaborate system along these lines based around having looked at, I think, C++'s version of this sort of idea (or was it Java's?  I forget), and this system did force friendship relations to be bidirectional.  I probably still have that code somewhere, and I might one day revive it.
+[^2]:	Not quite, because it only really knows how to modify a (copy of) a readtable.
 
-[^3]:	There was a previous `fluids` module.  The name 'fluid' comes from Cambridge Lisp / Standard Lisp, although it might go back further than that.  In those languages you would declare a variable 'fluid' which told the compiler that the full dynamic-binding semantics for it should be kept, even in compiled code.  Of course for both those languages compiled code and interpreted code often had different semantics: I am pretty sure that *all* variables in interpreted code were implicitly fluid.
+[^3]:	I once had a much more elaborate system along these lines based around having looked at, I think, C++'s version of this sort of idea (or was it Java's?  I forget), and this system did force friendship relations to be bidirectional.  I probably still have that code somewhere, and I might one day revive it.
 
-[^4]:	Well: you could write your own `handler-bind` / `handler-case` forms, but don't do that.
+[^4]:	There was a previous `fluids` module.  The name 'fluid' comes from Cambridge Lisp / Standard Lisp, although it might go back further than that.  In those languages you would declare a variable 'fluid' which told the compiler that the full dynamic-binding semantics for it should be kept, even in compiled code.  Of course for both those languages compiled code and interpreted code often had different semantics: I am pretty sure that *all* variables in interpreted code were implicitly fluid.
+
+[^5]:	Well: you could write your own `handler-bind` / `handler-case` forms, but don't do that.
