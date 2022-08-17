@@ -139,6 +139,18 @@
     (otherwise
      (decorator-error "~S doesn't look like a definition" form))))
 
+(define-decorator-dispatcher export (form &key pre options &allow-other-keys)
+  (destructuring-match options
+    ((&key (from '*package*))
+     (destructuring-match form
+       ((_ name . _)
+        (:when (symbolp name))
+        (values form (cons `(export ',name (find-package ,from)) pre)))
+       (otherwise
+        (decorator-error "Don't know what to export in ~S"))))
+    (otherwise
+     (decorator-error "Options ~S should match (&key from)" options))))
+
 #||
 (define-decorator-dispatcher traced (fdef &key options &allow-other-keys)
   (destructuring-match options
