@@ -73,9 +73,11 @@ read however it wishes to."
        (lambda (stream char)
          (declare (ignore char))
          (let ((form (read-delimited-list close stream t)))
-           (if *sb-transformer*
-               (funcall *sb-transformer* form stream)
-             (cons *sb-operator-name* form))))
+           (if (not *read-suppress*)
+               (if *sb-transformer*
+                   (funcall *sb-transformer* form stream)
+                 (cons *sb-operator-name* form))
+             nil)))
        nil sbrt)
       (set-macro-character
        close
