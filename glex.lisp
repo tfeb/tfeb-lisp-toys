@@ -84,12 +84,14 @@ This is to DEFGLEX as DEFPARAMETER is to DEFVAR."
      #\# dollar
      (lambda (stream char n)
        (declare (ignore char n))
-       (let ((got (read stream t nil t)))
-         (unless (symbolp got)
-           (error 'glex-reader-error
-                  :format-control "global lexicals are symbols: ~S is ~S"
-                  :format-arguments (list got (type-of got))
-                  :stream stream))
-         `(glex-value ',got)))
+       (if (not *read-suppress*)
+           (let ((got (read stream t nil t)))
+             (unless (symbolp got)
+               (error 'glex-reader-error
+                      :format-control "global lexicals are symbols: ~S is ~S"
+                      :format-arguments (list got (type-of got))
+                      :stream stream))
+             `(glex-value ',got))
+           (read stream t nil t)))
      glrt)
     glrt))
