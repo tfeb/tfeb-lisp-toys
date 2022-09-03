@@ -981,6 +981,49 @@ This is done so things work at the top level (in particular I did not want anyth
 ### Package, module
 `decorators` lives in and provides `:org.tfeb.toys.decorators`.
 
+## Metatronic macros
+Or, recording angel.
+
+The usual approach to making CL macros less unhygenic means they tend to look like:
+
+```lisp
+(defmacro ... (...)
+  (let ((xn (make-symbol "X"))
+    `(... ,xn ...)))
+```
+
+Metatronic macros make a lot of this pain go away: just give the symbols you want to be gensymized names like `<x>` and all the pain goes away:
+
+```lisp
+(define-metatronic-macro with-file-lines ((line file) &body forms)
+  `(with-open-file (<in> ,file)
+     (do ((,line (read-line <in> nil <in>)
+                (read-line <in> nil <in>)))
+         ((eq ,line <in>)))
+     ,@forms))
+```
+
+All that happens is that each symbol whose name looks like `<...>` is rewritten as a gensymized version of itself, with each identical symbol being rewritten to the same thing[^6].  As a special case, symbols whose names are `"<>"` are rewritten as unique gensymized symbols[^7].
+
+Expanding the above `with-file-lines` gives:
+
+```lisp
+(defmacro with-file-lines ((line file) &body forms)
+  `(with-open-file (#:<in> ,file)
+     (do ((,line (read-line #:<in> nil #:<in>) (read-line #:<in> nil #:<in>)))
+         ((eq ,line #:<in>)) )
+     ,@forms))
+```
+
+Where, in this case, all the `#:<in>` symbols are the same symbol.
+
+**`define-metatronic-macro`** is like `defmacro` except that metatronic symbols are rewritten.
+
+**`metatronize`** does the rewriting and could be used to implement similar macros.  Its arguments are a form to be rewritten and an optional table of rewrites.  It returns the rewritten form and a table of rewrites.  Currently the table is an alist, but do not assume this.
+
+### Notes
+`metatronize` and hence `define-metatronic-macro` only looks at list structure: it does not look into arrays or structures and return suitable copies of them.  If you want to rewrite the contents of literal objects the best approach is to use `load-time-value` and the constructor to do this.
+
 ---
 
 The TFEB.ORG Lisp toys are copyright 1990-2022 Tim Bradshaw.  See `LICENSE` for the license.
@@ -996,3 +1039,7 @@ The TFEB.ORG Lisp toys are copyright 1990-2022 Tim Bradshaw.  See `LICENSE` for 
 [^4]:	There was a previous `fluids` module.  The name 'fluid' comes from Cambridge Lisp / Standard Lisp, although it might go back further than that.  In those languages you would declare a variable 'fluid' which told the compiler that the full dynamic-binding semantics for it should be kept, even in compiled code.  Of course for both those languages compiled code and interpreted code often had different semantics: I am pretty sure that *all* variables in interpreted code were implicitly fluid.
 
 [^5]:	Well: you could write your own `handler-bind` / `handler-case` forms, but don't do that.
+
+[^6]:	So, in particular `foo:<x>` and `bar:<x>` will be rewritten as distinct gensymized versions of themselves.
+
+[^7]:	So `(apply #'eq (metatronize '(<x> <x>)))` is true but `(apply #'eq (metatronize '(<> <>)))` is false.
