@@ -984,7 +984,7 @@ This is done so things work at the top level (in particular I did not want anyth
 ## Metatronic macros
 Or, recording angel.
 
-The usual approach to making CL macros less unhygenic means they tend to look like:
+The usual approach to making CL macros less unhygienic means they tend to look like:
 
 ```lisp
 (defmacro ... (...)
@@ -1019,10 +1019,26 @@ Where, in this case, all the `#:<in>` symbols are the same symbol.
 
 **`define-metatronic-macro`** is like `defmacro` except that metatronic symbols are rewritten.
 
-**`metatronize`** does the rewriting and could be used to implement similar macros.  Its arguments are a form to be rewritten and an optional table of rewrites.  It returns the rewritten form and a table of rewrites.  Currently the table is an alist, but do not assume this.
+**`metatronize`** does the rewriting and could be used to implement similar macros.  It has one positional argument and three keyword arguments:
+
+- `form` is the form to be rewritten;
+- `rewrites`, if given, is a table of rewrites returned from a previous call to `metatronize`;
+- `sharing`, if given, is a table with information on structure sharing from a previous call to `metatronize` which it will use to possibly share structure with the `form` argument to that previous call;
+- `metatronizer`, if given, is a function of one argument, a symbol, which should return either the symbol and any value or a gensymized version of it and an indication of whether it should be stored in the rewrite table.
+
+If the last argument is given then it is used instead of the builtin metatronizer, so you can define your own notion of what symbols should be gensymized.
 
 ### Notes
 `metatronize` and hence `define-metatronic-macro` only looks at list structure: it does not look into arrays or structures and return suitable copies of them.  If you want to rewrite the contents of literal objects the best approach is to use `load-time-value` and the constructor to do this.
+
+`metatronize` is *not a code walker*: it just blindly replaces some symbols with gensymized versions of them.  Metatronic macros are typically easier to make less unhygienic than they would otherwise be but they are very far from being hygienic macros.
+
+The tables used by`metatronize` are currently alists, which will limit its performance on vast structure.  They may not always be, but they probably will be since macro definitions are not usually vast.
+
+`metatronize` does deal with sharing and circularity in list structure properly (but only in list structure).  Objects which are not lists and not metatronic symbols are not copied of course, so if they were previously the same they still will be in the copy.
+
+### Package, module
+`metatronic` lives in and provides `:org.tfeb.toys.metatronic`.
 
 ---
 
