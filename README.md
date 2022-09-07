@@ -984,7 +984,7 @@ This is done so things work at the top level (in particular I did not want anyth
 ## Metatronic macros
 Or, recording angel.
 
-The usual approach to making CL macros less unhygienic means they tend to look like:
+The usual approach to making CL macros less unhygienic[^6] means they tend to look like:
 
 ```lisp
 (defmacro ... (...)
@@ -999,23 +999,30 @@ Metatronic macros make a lot of this pain go away: just give the symbols you wan
   `(with-open-file (<in> ,file)
      (do ((,line (read-line <in> nil <in>)
                 (read-line <in> nil <in>)))
-         ((eq ,line <in>)))
-     ,@forms))
+         ((eq ,line <in>))
+       ,@forms)))
 ```
 
-All that happens is that each symbol whose name looks like `<...>` is rewritten as a gensymized version of itself, with each identical symbol being rewritten to the same thing[^6].  As a special case, symbols whose names are `"<>"` are rewritten as unique gensymized symbols[^7].
+All that happens is that each symbol whose name looks like `<...>` is rewritten as a gensymized version of itself, with each identical symbol being rewritten to the same thing[^7].  As a special case, symbols whose names are `"<>"` are rewritten as unique gensymized symbols[^8].
 
-Expanding the above `with-file-lines` gives:
+With the above definition
 
 ```lisp
-(defmacro with-file-lines ((line file) &body forms)
-  `(with-open-file (#:<in> ,file)
-     (do ((,line (read-line #:<in> nil #:<in>) (read-line #:<in> nil #:<in>)))
-         ((eq ,line #:<in>)) )
-     ,@forms))
+(with-file-lines (l "/tmp/x")
+  (print l))
 ```
 
-Where, in this case, all the `#:<in>` symbols are the same symbol.
+expands into
+
+```lisp
+(with-open-file (#:<in> "/tmp/x")
+  (do ((l (read-line #:<in> nil #:<in>)
+          (read-line #:<in> nil #:<in>)))
+      ((eq l #:<in>))
+    (print l)))
+```
+
+where, in this case, all the `#:<in>` symbols are the same symbol.
 
 **`define-metatronic-macro`** is like `defmacro` except that metatronic symbols are rewritten.
 
@@ -1024,14 +1031,24 @@ Where, in this case, all the `#:<in>` symbols are the same symbol.
 - `form` is the form to be rewritten;
 - `rewrites`, if given, is a table of rewrites returned from a previous call to `metatronize`;
 - `sharing`, if given, is a table with information on structure sharing from a previous call to `metatronize` which it will use to possibly share structure with the `form` argument to that previous call;
-- `metatronizer`, if given, is a function of one argument, a symbol, which should return either the symbol and any value or a gensymized version of it and an indication of whether it should be stored in the rewrite table.
+- `rewriter`, if given, is a function of one argument, a symbol, which should return either its argument and any value or a gensymized version of it and an indication of whether it should be stored in the rewrite table.
 
 If the last argument is given then it is used instead of the builtin metatronizer, so you can define your own notion of what symbols should be gensymized.
 
 ### Notes
-`metatronize` and hence `define-metatronic-macro` only looks at list structure: it does not look into arrays or structures and return suitable copies of them.  If you want to rewrite the contents of literal objects the best approach is to use `load-time-value` and the constructor to do this.
+Macros written with `define-metatronic-macro` in fact metatronize symbols *twice*: once when the macro is defined, and then again when it is expanded, using a list of rewritten symbols from the first metatronization to drive a `rewriter` function.  This ensures that each expansion has a unique set of gensymized symbols:  with the above definition of `with-file-lines`, then
 
-`metatronize` is *not a code walker*: it just blindly replaces some symbols with gensymized versions of them.  Metatronic macros are typically easier to make less unhygienic than they would otherwise be but they are very far from being hygienic macros.
+```lisp
+> (eq (caadr (macroexpand-1 '(with-file-lines (l "/tmp/x") (print l))))
+      (caadr (macroexpand-1 '(with-file-lines (l "/tmp/x") (print l)))))
+nil
+```
+
+It is still possible of course, by inspecting the expansion of the `define-metatronic-macro`form, to capture the names of the gensymized symbols before they are metatronized again, and hence to subvert metatronization.
+
+`metatronize` and hence `define-metatronic-macro` only looks at list structure: it does not look into arrays or structures and return suitable copies of them as doing that in general is absurdly hard.  If you want to rewrite the contents of literals then the best approach is to use `load-time-value` and a constructor to do this.
+
+`metatronize` is *not a code walker*: it just blindly replaces some symbols with gensymized versions of them.  Metatronic macros are typically easier to make more hygeinic than they would otherwise be but they are very far from being hygienic macros.
 
 The tables used by`metatronize` are currently alists, which will limit its performance on vast structure.  They may not always be, but they probably will be since macro definitions are not usually vast.
 
@@ -1056,6 +1073,8 @@ The TFEB.ORG Lisp toys are copyright 1990-2022 Tim Bradshaw.  See `LICENSE` for 
 
 [^5]:	Well: you could write your own `handler-bind` / `handler-case` forms, but don't do that.
 
-[^6]:	So, in particular `foo:<x>` and `bar:<x>` will be rewritten as distinct gensymized versions of themselves.
+[^6]:	I am reasonably sure that fully hygienic macros are not possible in CL without extensions to the language or access to the guts of the implementation.
 
-[^7]:	So `(apply #'eq (metatronize '(<x> <x>)))` is true but `(apply #'eq (metatronize '(<> <>)))` is false.
+[^7]:	So, in particular `foo:<x>` and `bar:<x>` will be rewritten as distinct gensymized versions of themselves.
+
+[^8]:	So `(apply #'eq (metatronize '(<x> <x>)))` is true but `(apply #'eq (metatronize '(<> <>)))` is false.
