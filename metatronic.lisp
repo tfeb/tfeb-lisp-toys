@@ -9,6 +9,7 @@
   (:use :cl :org.tfeb.hax.utilities)
   (:export
    #:define-metatronic-macro
+   #:metatronic-macrolet
    #:metatronize))
 
 (in-package :org.tfeb.toys.metatronic)
@@ -103,6 +104,25 @@ this."
          ,@(if doc (list doc) '())
          ,@decls
          (second-metatonize (progn ,@metatronized-forms) ',(mapcar #'cdr rtab))))))
+
+(defmacro metatronic-macrolet (clauses &body forms)
+  "MACROLET, metatronically"
+  `(macrolet
+       ,(mapcar (lambda (clause)
+                  (destructuring-bind (name (&rest args) &body doc/decls/forms) clause
+                    (multiple-value-bind (doc decls forms) (parse-docstring-body doc/decls/forms)
+                      (multiple-value-bind (metatronized-forms rtab stab) (metatronize forms)
+                        (declare (ignore stab))
+                        `(,name ,args
+                                ,@(if doc (list doc) '())
+                                ,@decls
+                                (second-metatonize (progn ,@metatronized-forms)
+                                                   ',(mapcar #'cdr rtab)))))))
+                clauses)
+     ,@forms))
+
+#+(and LispWorks LW-Editor)
+(editor:setup-indent "metatronic-macrolet" 1 nil nil 'flet)
 
 #||
 (define-metatronic-macro do-file ((lv file) &body forms)

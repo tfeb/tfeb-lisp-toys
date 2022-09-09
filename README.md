@@ -1026,6 +1026,8 @@ where, in this case, all the `#:<in>` symbols are the same symbol.
 
 **`define-metatronic-macro`** is like `defmacro` except that metatronic symbols are rewritten.
 
+**`metatronic-macrolet`** is like `macrolet` except that metatronic symbols are rewritten.
+
 **`metatronize`** does the rewriting and could be used to implement similar macros.  It has one positional argument and three keyword arguments:
 
 - `form` is the form to be rewritten;
@@ -1036,7 +1038,7 @@ where, in this case, all the `#:<in>` symbols are the same symbol.
 If the last argument is given then it is used instead of the builtin metatronizer, so you can define your own notion of what symbols should be gensymized.
 
 ### Notes
-Macros written with `define-metatronic-macro` in fact metatronize symbols *twice*: once when the macro is defined, and then again when it is expanded, using a list of rewritten symbols from the first metatronization to drive a `rewriter` function.  This ensures that each expansion has a unique set of gensymized symbols:  with the above definition of `with-file-lines`, then
+Macros written with `define-metatronic-macro` and `metatronic-macrolet` in fact metatronize symbols *twice*: once when the macro is defined, and then again when it is expanded, using a list of rewritten symbols from the first metatronization to drive a `rewriter` function.  This ensures that each expansion has a unique set of gensymized symbols:  with the above definition of `with-file-lines`, then
 
 ```lisp
 > (eq (caadr (macroexpand-1 '(with-file-lines (l "/tmp/x") (print l))))
@@ -1044,7 +1046,7 @@ Macros written with `define-metatronic-macro` in fact metatronize symbols *twice
 nil
 ```
 
-It is still possible of course, by inspecting the expansion of the `define-metatronic-macro`form, to capture the names of the gensymized symbols before they are metatronized again, and hence to subvert metatronization.
+If you inspect the expansion of `define-metatronic-macro` forms carefully you can still infer what the names of gensymized symbols will be before they are metatronized again, and hence subvert metatronization.  Don't do that.
 
 `metatronize` and hence `define-metatronic-macro` only looks at list structure: it does not look into arrays or structures and return suitable copies of them as doing that in general is absurdly hard.  If you want to rewrite the contents of literals then the best approach is to use `load-time-value` and a constructor to do this.
 
