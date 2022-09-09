@@ -995,7 +995,7 @@ The usual approach to making CL macros less unhygienic[^6] means they tend to lo
 Metatronic macros make a lot of this pain go away: just give the symbols you want to be gensymized names like `<x>` and all the pain goes away:
 
 ```lisp
-(define-metatronic-macro with-file-lines ((line file) &body forms)
+(defmacro/m with-file-lines ((line file) &body forms)
   `(with-open-file (<in> ,file)
      (do ((,line (read-line <in> nil <in>)
                 (read-line <in> nil <in>)))
@@ -1024,9 +1024,9 @@ expands into
 
 where, in this case, all the `#:<in>` symbols are the same symbol.
 
-**`define-metatronic-macro`** is like `defmacro` except that metatronic symbols are rewritten.
+**`defmacro/m`** is like `defmacro` except that metatronic symbols are rewritten.
 
-**`metatronic-macrolet`** is like `macrolet` except that metatronic symbols are rewritten.
+**`macrolet/m`** is like `macrolet` except that metatronic symbols are rewritten.
 
 **`metatronize`** does the rewriting and could be used to implement similar macros.  It has one positional argument and three keyword arguments:
 
@@ -1038,7 +1038,7 @@ where, in this case, all the `#:<in>` symbols are the same symbol.
 If the last argument is given then it is used instead of the builtin metatronizer, so you can define your own notion of what symbols should be gensymized.
 
 ### Notes
-Macros written with `define-metatronic-macro` and `metatronic-macrolet` in fact metatronize symbols *twice*: once when the macro is defined, and then again when it is expanded, using a list of rewritten symbols from the first metatronization to drive a `rewriter` function.  This ensures that each expansion has a unique set of gensymized symbols:  with the above definition of `with-file-lines`, then
+Macros written with `defmacro/m` and `macrolet/m` in fact metatronize symbols *twice*: once when the macro is defined, and then again when it is expanded, using a list of rewritten symbols from the first metatronization to drive a `rewriter` function.  This ensures that each expansion has a unique set of gensymized symbols:  with the above definition of `with-file-lines`, then
 
 ```lisp
 > (eq (caadr (macroexpand-1 '(with-file-lines (l "/tmp/x") (print l))))
@@ -1046,9 +1046,11 @@ Macros written with `define-metatronic-macro` and `metatronic-macrolet` in fact 
 nil
 ```
 
-If you inspect the expansion of `define-metatronic-macro` forms carefully you can still infer what the names of gensymized symbols will be before they are metatronized again, and hence subvert metatronization.  Don't do that.
+If you inspect the expansion of `defmacro/m` forms carefully you can still infer what the names of the gensymized symbols will be before they are metatronized again, and hence subvert metatronization.  Don't do that.
 
-`metatronize` and hence `define-metatronic-macro` only looks at list structure: it does not look into arrays or structures and return suitable copies of them as doing that in general is absurdly hard.  If you want to rewrite the contents of literals then the best approach is to use `load-time-value` and a constructor to do this.
+One consequence of this double-metatronization is that you should not use metatronic variables in the arglists of metatronic macros, because the arglists can't be metatronized a second time.  An earlier version did allow this but at the cost of only metatronizing once.
+
+`metatronize` and hence `defmacro/m` only looks at list structure: it does not look into arrays or structures and return suitable copies of them as doing that in general is absurdly hard.  If you want to rewrite the contents of literals then the best approach is to use `load-time-value` and a constructor to do this.
 
 `metatronize` is *not a code walker*: it just blindly replaces some symbols with gensymized versions of them.  Metatronic macros are typically easier to make more hygeinic than they would otherwise be but they are very far from being hygienic macros.
 

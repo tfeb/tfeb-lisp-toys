@@ -8,8 +8,8 @@
 (defpackage :org.tfeb.toys.metatronic
   (:use :cl :org.tfeb.hax.utilities)
   (:export
-   #:define-metatronic-macro
-   #:metatronic-macrolet
+   #:defmacro/m
+   #:macrolet/m
    #:metatronize))
 
 (in-package :org.tfeb.toys.metatronic)
@@ -87,7 +87,7 @@ structure (only) is correctly copied."
                                                  (> (length n) 2)))
                                      (values s nil))))))
 
-(defmacro define-metatronic-macro (name (&rest args) &body doc/decls/forms)
+(defmacro defmacro/m (name (&rest args) &body doc/decls/forms)
   "Define a metatronic macro
 
 This is exactly like DEFMACRO but metatronic symbols are gensymized,
@@ -105,7 +105,7 @@ this."
          ,@decls
          (second-metatonize (progn ,@metatronized-forms) ',(mapcar #'cdr rtab))))))
 
-(defmacro metatronic-macrolet (clauses &body forms)
+(defmacro macrolet/m (clauses &body forms)
   "MACROLET, metatronically"
   `(macrolet
        ,(mapcar (lambda (clause)
@@ -122,10 +122,10 @@ this."
      ,@forms))
 
 #+(and LispWorks LW-Editor)
-(editor:setup-indent "metatronic-macrolet" 1 nil nil 'flet)
+(editor:setup-indent "macrolet/m" 1 nil nil 'flet)
 
 #||
-(define-metatronic-macro do-file ((lv file) &body forms)
+(defmacro/m do-file ((lv file) &body forms)
   `(let ((<file> ,file))
      (with-open-file (<in> <file>)
        (doing ((,lv (read-line <in> nil <in>)))
