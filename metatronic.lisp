@@ -20,9 +20,9 @@
                          (rewrites '()) (shares '())
                          (rewriter nil))
   ;; This has hard-wired knowledge of what a metatronic variable looks
-  ;; like.
-  "Return a metatronic version of FORM, the table of variables, and the
-sharing table.
+  ;; like unless REWRITER is given
+  "Return a metatronic version of FORM, the table of variables, a list
+of anonymous variables and the sharing table.
 
 Arguments are FORM with keyword arguments
 - REWRITES is a table of variables returned from a previous call
@@ -35,7 +35,8 @@ Arguments are FORM with keyword arguments
 This only looks at list structure.  Sharing and circularity of list
 structure (only) is correctly copied."
   (let ((rtab rewrites) ;I feel bad assigning to arguments
-        (stab shares))
+        (stab shares)
+        (anons '()))
     (labels ((rewrite (this)
                (typecase this
                  (symbol
@@ -48,8 +49,9 @@ structure (only) is correctly copied."
                             (if (eq new this)
                                 this
                               (progn
-                                (when storep
-                                  (setf rtab (acons this new rtab)))
+                                (if storep
+                                    (setf rtab (acons this new rtab))
+                                  (push new anons))
                                 new)))
                         (let* ((n (symbol-name this))
                                (l (length n)))
@@ -57,8 +59,9 @@ structure (only) is correctly copied."
                                    (char= (char n 0) #\<)
                                    (char= (char n (1- l)) #\>))
                               (let ((s (make-symbol n)))
-                                (unless (= l 2)
-                                  (setf rtab (acons this s rtab)))
+                                (if (/= l 2)
+                                    (setf rtab (acons this s rtab))
+                                  (push s anons))
                                 s)
                             this))))))
                  (cons
@@ -74,18 +77,22 @@ structure (only) is correctly copied."
                   ;; Not going to handle arrays etc because it is a
                   ;; lot of work for almost or actually no benefit.
                   this))))
-      (values (rewrite form) rtab stab))))
+      (values (rewrite form) rtab anons stab))))
 
-(defun second-metatonize (form metatrons)
+(defun second-metatonize (form metatrons anonymous)
   ;; Second quantization: this just exists so macroexpansions are
   ;; smaller
   (values (metatronize form
                        :rewriter (lambda (s)
-                                   (if (member s metatrons)
-                                       (let ((n (symbol-name s)))
-                                         (values (make-symbol n)
-                                                 (> (length n) 2)))
-                                     (values s nil))))))
+                                   (cond
+                                    ((member s metatrons)
+                                     (values (make-symbol (symbol-name s))
+                                             t))
+                                    ((member s anonymous)
+                                     (values (make-symbol (symbol-name s))
+                                             nil))
+                                    (t
+                                     (values s nil)))))))
 
 (defmacro defmacro/m (name (&rest args) &body doc/decls/forms)
   "Define a metatronic macro
@@ -98,12 +105,13 @@ structures or what have you as it's just too hard.  Use
 LOAD-TIME-VALUE to construct a literal at load time if you really need
 this."
   (multiple-value-bind (doc decls forms) (parse-docstring-body doc/decls/forms)
-    (multiple-value-bind (metatronized-forms rtab stab) (metatronize forms)
+    (multiple-value-bind (metatronized-forms rtab anons stab) (metatronize forms)
       (declare (ignore stab))
       `(defmacro ,name ,args
          ,@(if doc (list doc) '())
          ,@decls
-         (second-metatonize (progn ,@metatronized-forms) ',(mapcar #'cdr rtab))))))
+         (second-metatonize (progn ,@metatronized-forms)
+                            ',(mapcar #'cdr rtab) ',anons)))))
 
 (defmacro macrolet/m (clauses &body forms)
   "MACROLET, metatronically"
@@ -111,13 +119,15 @@ this."
        ,(mapcar (lambda (clause)
                   (destructuring-bind (name (&rest args) &body doc/decls/forms) clause
                     (multiple-value-bind (doc decls forms) (parse-docstring-body doc/decls/forms)
-                      (multiple-value-bind (metatronized-forms rtab stab) (metatronize forms)
+                      (multiple-value-bind (metatronized-forms rtab anons stab)
+                          (metatronize forms)
                         (declare (ignore stab))
                         `(,name ,args
                                 ,@(if doc (list doc) '())
                                 ,@decls
                                 (second-metatonize (progn ,@metatronized-forms)
-                                                   ',(mapcar #'cdr rtab)))))))
+                                                   ',(mapcar #'cdr rtab)
+                                                   ',anons))))))
                 clauses)
      ,@forms))
 

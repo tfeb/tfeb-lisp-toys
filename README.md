@@ -1037,8 +1037,15 @@ where, in this case, all the `#:<in>` symbols are the same symbol.
 
 If the last argument is given then it is used instead of the builtin metatronizer, so you can define your own notion of what symbols should be gensymized.
 
+`metateonize` returns four values:
+
+- the rewritten form;
+- a table of rewrites which can be handed to a later call to `metateonize`;
+- a list of unique symbols, which are usually the symbols that symbols whose names are `<>`get rewritten to;
+- a sharing table describing shared structure in the form.
+
 ### Notes
-Macros written with `defmacro/m` and `macrolet/m` in fact metatronize symbols *twice*: once when the macro is defined, and then again when it is expanded, using a list of rewritten symbols from the first metatronization to drive a `rewriter` function.  This ensures that each expansion has a unique set of gensymized symbols:  with the above definition of `with-file-lines`, then
+Macros written with `defmacro/m` and `macrolet/m` in fact metatronize symbols *twice*: once when the macro is defined, and then again when it is expanded, using lists of rewritten & unique symbols from the first metatronization to drive a `rewriter` function.  This ensures that each expansion has a unique set of gensymized symbols:  with the above definition of `with-file-lines`, then
 
 ```lisp
 > (eq (caadr (macroexpand-1 '(with-file-lines (l "/tmp/x") (print l))))
@@ -1054,7 +1061,7 @@ One consequence of this double-metatronization is that you should not use metatr
 
 `metatronize` is *not a code walker*: it just blindly replaces some symbols with gensymized versions of them.  Metatronic macros are typically easier to make more hygeinic than they would otherwise be but they are very far from being hygienic macros.
 
-The tables used by`metatronize` are currently alists, which will limit its performance on vast structure.  They may not always be, but they probably will be since macro definitions are not usually vast.
+The tables used by`metatronize` are currently alists, which will limit its performance on vast structure.  They may not always be, but they probably will be since macro definitions are not usually vast.  Do not rely on them being alists.
 
 `metatronize` does deal with sharing and circularity in list structure properly (but only in list structure).  Objects which are not lists and not metatronic symbols are not copied of course, so if they were previously the same they still will be in the copy.
 
