@@ -36,7 +36,6 @@
    #:get-precision-universal-time
    #:default-log-entry-formatter
    #:*log-entry-formatter*
-   #:log-entry-formatter
    #:slog-to
    #:*fallback-log-destination-handler*
    #:logging))
@@ -309,12 +308,6 @@
 
 (defvar *log-entry-formatter* (default-log-entry-formatter))
 
-(defgeneric log-entry-formatter (entry &key))
-
-(defmethod log-entry-formatter ((entry log-entry) &key)
-  (declare (ignorable entry))
-  *log-entry-formatter*)
-
 ;;; I am not sure how extensible slog-to should be
 ;;;
 
@@ -325,7 +318,7 @@
   (slog-to to (ensure-log-entry datum arguments)))
 
 (defmethod slog-to ((to stream) (datum log-entry) &key)
-  (funcall (log-entry-formatter datum) to datum)
+  (funcall *log-entry-formatter* to datum)
   datum)
 
 (defmethod slog-to ((to pathname) (datum log-entry) &key)

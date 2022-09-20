@@ -646,29 +646,18 @@ You can define methods on `slog-to` to handle other destination classes, or inde
 **`*fallback-log-destination-handler*`** is the fallback log destination handler.  If bound to a function, then `slog-to` will, by default, call this function with three arguments: the destination, the log entry, and a list of other arguments passed to `slog-to`.  The function is assumed to handle the entry and its return value or values are returned by `slog-to`.  The default value of this variable is `nil` which will cause `slog-to`to signal an error.
 
 ### Log entry formats
-In the case of destinations which end up as streams, the format of what is written into the stream is controlled by the generic function `log-entry-formatter` and the special variable `*log-entry-formatter*`.
-
-**`log-entry-formatter`** is a generic function called by `log-to` to compute the log entry formatter function for a log entry.  It takes one argument, the log entry, and may take keyword arguments.  There is one default method, on `log-entry`, which returns the value of `*log-entry-formatter*`.
-
-Additional methods can be defined on `log-entry-formatter` but not on any of the classes defined by `slog` itself.
+In the case of destinations which end up as streams, the format of what is written into the stream is controlled by `*log-entry-formatter*`.
 
 **`*log-entry-formatter*`** is bound to a function of two arguments: a destination stream and the log entry.  It is responsible for writing the log entry to the stream.  The default value of this writes lines which consist of a high-precision version of the universal time (see below), a space, and then the printed version of the log entry, as defined by its report function.  This variable can be redefined or bound to be any other function.
 
 **`default-log-entry-formatter`** is a function which returns the default value of `*log-entry-formatter*`.
 
-As an example of this, here's how you might pick locale-specific log entry formats:
+If you want to have fine-grained control over log entry formats then two possible approaches are:
 
-```lisp
-(defclass locale-log-entry (simple-log-entry)
-  ())
+- you could make the value of `*log-entry-formatter*` be a generic function which can then dispatch on its second argument to return an appropriate log format;
+- and/or you could define methods on `slog-to` for suitable `log-entry` subclasses which can select entry formats appropriately.
 
-(defmethod slog-to ((to stream) (datum locale-log-entry) &key (locale nil))
-  (funcall (log-entry-formatter datum :locale locale) to datum)
-  datum)
-
-(defmethod log-entry-formatter ((entry locale-log-entry) &key (locale nil))
-  ... return locale-specific log entry formatter for entry ...)
-```
+The second approach allows you, for instance, to select locale-specific formats by passing keyword arguments to specify non-default locales to `slog-to`, rather than just relying on its class alone[^5].
 
 ### The `logging` macro
 **`(logging ([(typespec destination ...) ...]) form ...)`** establishes dynamic handlers for log entries which will log to the values of the specified destinations.  Each `typespec` is as for `handler-bind`, except that the type `t` is rewritten as `log-entry`, which makes things easier to write.  Any type mentioned in `typespec` must be a subtype of `log-entry`.  The value of each destination is then found, pathnames being canonicalized (see below for pathname handling) and these values are used as the destinations for calls to `slog-to`.  As an example the expansion of the following form:
@@ -733,7 +722,7 @@ One important reason for this behaviour of `logging` is to deal with this proble
 
 Because the absolute pathname of `foo.log`is computed and stored at the point of the logging macro you won't end up logging to multiple files: all the log entries will go to whatever the canonical version of `foo.log` was at the point that `logging` appeared.
 
-Finally note that calls to `slog` are completely legal but will do nothing outside the dynamic extent of a `logging` macro[^5], but `slog-to` will work quite happily and will write log entries.  This includes when given pathname arguments: it is perfectly legal to write code which just calls `(slog-to "/my/file.log" "a message")`.  See below on file handling.
+Finally note that calls to `slog` are completely legal but will do nothing outside the dynamic extent of a `logging` macro[^6], but `slog-to` will work quite happily and will write log entries.  This includes when given pathname arguments: it is perfectly legal to write code which just calls `(slog-to "/my/file.log" "a message")`.  See below on file handling.
 
 ### File handling
 For log destinations which correspond to files, `slog` goes to some lengths to try and avoid open streams leaking away and to make sure there is a single stream open to each log file.  This is not as simple as it looks as `slog-to` can take a destination argument which is a filename, so that users don't have to write a mass of code which handles streams, and there's no constraint that `slog-to` must be called within the dynamic extent of a `logging` form.
@@ -1002,7 +991,7 @@ This is done so things work at the top level (in particular I did not want anyth
 ## Metatronic macros
 Or, recording angel.
 
-The usual approach to making CL macros less unhygienic[^6] means they tend to look like:
+The usual approach to making CL macros less unhygienic[^7] means they tend to look like:
 
 ```lisp
 (defmacro ... (...)
@@ -1021,7 +1010,7 @@ Metatronic macros make a lot of this pain go away: just give the symbols you wan
        ,@forms)))
 ```
 
-All that happens is that each symbol whose name looks like `<...>` is rewritten as a gensymized version of itself, with each identical symbol being rewritten to the same thing[^7].  As a special case, symbols whose names are `"<>"` are rewritten as unique gensymized symbols[^8].
+All that happens is that each symbol whose name looks like `<...>` is rewritten as a gensymized version of itself, with each identical symbol being rewritten to the same thing[^8].  As a special case, symbols whose names are `"<>"` are rewritten as unique gensymized symbols[^9].
 
 With the above definition
 
@@ -1100,10 +1089,12 @@ The TFEB.ORG Lisp toys are copyright 1990-2022 Tim Bradshaw.  See `LICENSE` for 
 
 [^4]:	There was a previous `fluids` module.  The name 'fluid' comes from Cambridge Lisp / Standard Lisp, although it might go back further than that.  In those languages you would declare a variable 'fluid' which told the compiler that the full dynamic-binding semantics for it should be kept, even in compiled code.  Of course for both those languages compiled code and interpreted code often had different semantics: I am pretty sure that *all* variables in interpreted code were implicitly fluid.
 
-[^5]:	Well: you could write your own `handler-bind` / `handler-case` forms, but don't do that.
+[^5]:	An interim version of `slog` had a generic function, `log-entry-formatter` which was involved in this process with the aim of being able to select formats more flexibly, but it did not in fact add any useful flexibility.
 
-[^6]:	I am reasonably sure that fully hygienic macros are not possible in CL without extensions to the language or access to the guts of the implementation.
+[^6]:	Well: you could write your own `handler-bind` / `handler-case` forms, but don't do that.
 
-[^7]:	So, in particular `foo:<x>` and `bar:<x>` will be rewritten as distinct gensymized versions of themselves.
+[^7]:	I am reasonably sure that fully hygienic macros are not possible in CL without extensions to the language or access to the guts of the implementation.
 
-[^8]:	So `(apply #'eq (metatronize '(<x> <x>)))` is true but `(apply #'eq (metatronize '(<> <>)))` is false.
+[^8]:	So, in particular `foo:<x>` and `bar:<x>` will be rewritten as distinct gensymized versions of themselves.
+
+[^9]:	So `(apply #'eq (metatronize '(<x> <x>)))` is true but `(apply #'eq (metatronize '(<> <>)))` is false.
