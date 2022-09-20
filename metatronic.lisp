@@ -79,7 +79,7 @@ structure (only) is correctly copied."
                   this))))
       (values (rewrite form) rtab anons stab))))
 
-(defun second-metatronize (form metatrons anonymous)
+(defun m2 (form metatrons anonymous)
   ;; Second quantization: this just exists so macroexpansions are
   ;; smaller
   (values (metatronize form
@@ -110,7 +110,7 @@ this."
       `(defmacro ,name ,args
          ,@(if doc (list doc) '())
          ,@decls
-         (second-metatronize (progn ,@metatronized-forms)
+         (m2 (progn ,@metatronized-forms)
                              ',(mapcar #'cdr rtab) ',anons)))))
 
 (defmacro macrolet/m (clauses &body forms)
@@ -125,7 +125,7 @@ this."
                         `(,name ,args
                                 ,@(if doc (list doc) '())
                                 ,@decls
-                                (second-metatronize (progn ,@metatronized-forms)
+                                (m2 (progn ,@metatronized-forms)
                                                     ',(mapcar #'cdr rtab)
                                                     ',anons))))))
                 clauses)

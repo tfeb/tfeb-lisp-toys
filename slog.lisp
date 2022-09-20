@@ -12,13 +12,15 @@
  (:org.tfeb.hax.simple-loops :compile t)
  (:org.tfeb.hax.collecting :compile t)
  (:org.tfeb.hax.spam :compile t)
- (:org.tfeb.tools.feature-expressions :compile t))
+ (:org.tfeb.tools.feature-expressions :compile t)
+ (:org.tfeb.toys.metatronic :compile t))
 
 (defpackage :org.tfeb.toys.slog
   (:use :cl
    :org.tfeb.hax.simple-loops :org.tfeb.hax.collecting
    :org.tfeb.hax.spam
-   :org.tfeb.tools.feature-expressions)
+   :org.tfeb.tools.feature-expressions
+   :org.tfeb.toys.metatronic)
   #+ASDF
   (:import-from "UIOP" #:getcwd)
   (:export
@@ -34,6 +36,7 @@
    #:get-precision-universal-time
    #:default-log-entry-formatter
    #:*log-entry-formatter*
+   #:log-entry-formatter
    #:slog-to
    #:*fallback-log-destination-handler*
    #:logging))
@@ -306,6 +309,12 @@
 
 (defvar *log-entry-formatter* (default-log-entry-formatter))
 
+(defgeneric log-entry-formatter (entry &key))
+
+(defmethod log-entry-formatter ((entry log-entry) &key)
+  (declare (ignorable entry))
+  *log-entry-formatter*)
+
 ;;; I am not sure how extensible slog-to should be
 ;;;
 
@@ -316,7 +325,7 @@
   (slog-to to (ensure-log-entry datum arguments)))
 
 (defmethod slog-to ((to stream) (datum log-entry) &key)
-  (funcall *log-entry-formatter* to datum)
+  (funcall (log-entry-formatter datum) to datum)
   datum)
 
 (defmethod slog-to ((to pathname) (datum log-entry) &key)
@@ -367,30 +376,28 @@
        (cons (first typespec)
              (mapcar #'ensure-log-entry-typespec (rest typespec)))))))
 
-(defmacro logging (clauses &body forms)
+(defmacro/m logging (clauses &body forms)
   (unless (matchp clauses (list-of (cons-matches (any) (list-of (any)))))
     (error "logging clauses ~S aren't" clauses))
-  (let ((<log-entry> (make-symbol "LOG-ENTRY")))
-    `(closing-opened-log-files ()
-       (handler-bind
-           ,(collecting
-              (dolist (clause clauses)
-                (destructuring-bind (typespec . destinations) clause
-                  (let ((bindings (collecting
-                                    (dolist (d destinations)
-                                      (collect
-                                       (list (gensym)
-                                             `(canonicalize-destination ,d)))))))
-                    (collect
-                     `(,(ensure-log-entry-typespec typespec)
-                       (let ,bindings
-                         (lambda (,<log-entry>)
-                           ,@(collecting
-                                  (dolist (binding bindings)
+  `(closing-opened-log-files ()
+     (handler-bind
+         ,(collecting
+            (dolist (clause clauses)
+              (destructuring-bind (typespec . destinations) clause
+                (let ((bindings (collecting
+                                  (dolist (d destinations)
                                     (collect
-                                     `(slog-to ,(first binding)
-                                               ,<log-entry>))))))))))))
-         ,@forms))))
+                                     `(,(gensym) (canonicalize-destination ,d)))))))
+                  (collect
+                   `(,(ensure-log-entry-typespec typespec)
+                     (let ,bindings
+                       (lambda (<log-entry>)
+                         ,@(collecting
+                             (dolist (binding bindings)
+                               (collect
+                                `(slog-to ,(first binding)
+                                          <log-entry>))))))))))))
+       ,@forms)))
 
 
 ;;; Some tests

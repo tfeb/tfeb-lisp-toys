@@ -646,14 +646,32 @@ You can define methods on `slog-to` to handle other destination classes, or inde
 **`*fallback-log-destination-handler*`** is the fallback log destination handler.  If bound to a function, then `slog-to` will, by default, call this function with three arguments: the destination, the log entry, and a list of other arguments passed to `slog-to`.  The function is assumed to handle the entry and its return value or values are returned by `slog-to`.  The default value of this variable is `nil` which will cause `slog-to`to signal an error.
 
 ### Log entry formats
-In the case of destinations which end up as streams, the format of what is written into the stream is controlled by `*log-entry-formatter*`.
+In the case of destinations which end up as streams, the format of what is written into the stream is controlled by the generic function `log-entry-formatter` and the special variable `*log-entry-formatter*`.
+
+**`log-entry-formatter`** is a generic function called by `log-to` to compute the log entry formatter function for a log entry.  It takes one argument, the log entry, and may take keyword arguments.  There is one default method, on `log-entry`, which returns the value of `*log-entry-formatter*`.
+
+Additional methods can be defined on `log-entry-formatter` but not on any of the classes defined by `slog` itself.
 
 **`*log-entry-formatter*`** is bound to a function of two arguments: a destination stream and the log entry.  It is responsible for writing the log entry to the stream.  The default value of this writes lines which consist of a high-precision version of the universal time (see below), a space, and then the printed version of the log entry, as defined by its report function.  This variable can be redefined or bound to be any other function.
 
 **`default-log-entry-formatter`** is a function which returns the default value of `*log-entry-formatter*`.
 
+As an example of this, here's how you might pick locale-specific log entry formats:
+
+```lisp
+(defclass locale-log-entry (simple-log-entry)
+  ())
+
+(defmethod slog-to ((to stream) (datum locale-log-entry) &key (locale nil))
+  (funcall (log-entry-formatter datum :locale locale) to datum)
+  datum)
+
+(defmethod log-entry-formatter ((entry locale-log-entry) &key (locale nil))
+  ... return locale-specific log entry formatter for entry ...)
+```
+
 ### The `logging` macro
-**`(logging ([(tyespec destination ...) ...]) form ...)`** establishes dynamic handlers for log entries which will log to the values of the specified destinations.  Each `typespec` is as for `handler-bind`, except that the type `t` is rewritten as `log-entry`, which makes things easier to write.  Any type mentioned in `typespec` must be a subtype of `log-entry`.  The value of each destination is then found, pathnames being canonicalized (see below for pathname handling) and these values are used as the destinations for calls to `slog-to`.  As an example the expansion of the following form:
+**`(logging ([(typespec destination ...) ...]) form ...)`** establishes dynamic handlers for log entries which will log to the values of the specified destinations.  Each `typespec` is as for `handler-bind`, except that the type `t` is rewritten as `log-entry`, which makes things easier to write.  Any type mentioned in `typespec` must be a subtype of `log-entry`.  The value of each destination is then found, pathnames being canonicalized (see below for pathname handling) and these values are used as the destinations for calls to `slog-to`.  As an example the expansion of the following form:
 
 ```lisp
 (logging ((t "foo"
