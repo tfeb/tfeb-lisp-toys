@@ -10,7 +10,7 @@ The documentation is generally rather sparse, and it’s also just in the order 
 All of these things are independent modules, providing something which looks like `org.tfeb.toys.<module>`.  There is no ASDF or other system definition for all of them.  If they need other things either from amongst themselves or from other modules I've written they'll do so using [`require-module`](https://github.com/tfeb/tfeb-lisp-tools#requiring-modules-with-searching-require-module "require-module") which you'll need to have installed in that case, or if you don't to have loaded those modules some other way.  In the case that they need things written by other people or other larger systems they'll do that using [Quicklisp](https://www.quicklisp.org/ "Quicklisp").  Some of them do the former, none currently do the latter.
 
 ### Portability
-All of the toys purport to be portable Common Lisp.
+All of the toys purport to be portable Common Lisp, although several of them need each other and other things.
 
 ### Zero history
 The repo from which the toys are published was invented in 2021, but some of them are much older than that.  Some of that history exists but not in the publication repo.
@@ -19,7 +19,7 @@ The repo from which the toys are published was invented in 2021, but some of the
 All of the toys use *domain-structured names*: packages, modules, features and so on have names which start with a reversed DNS domain and then continue to divide further.  The prefix for all of the toys is `org.tfeb.toys`.  See [the TFEB.ORG tools documentation](https://github.com/tfeb/tfeb-lisp-tools#naming-conventions "TFEB.ORG tools / Naming conventions") for a little more on this.  If they move elsewhere, these names will change.
 
 ### The likely fate of some of the toys
-`locatives` will likely end up in my hax repo, as will `fluids`.  `glex` I'm not sure about.
+`locatives` will likely end up in my hax repo, as will `fluids`.  `glex` I'm not sure about.  `regex-case` is probably on the way although perhaps in some altered form.
 
 `simple-loops`, `metatronic` and `slog`, which formerly lived here, have now migrated to the hax repo.
 
@@ -624,6 +624,63 @@ This is done so things work at the top level (in particular I did not want anyth
 
 ### Package, module
 `decorators` lives in and provides `:org.tfeb.toys.decorators`.
+
+## `case` for regular expressions `regex-case`
+`regex-case` defines a `case`-like construct for regular expressions, building on [CL-PPCRE](https://edicl.github.io/cl-ppcre/ "CL-PPCRE").  Here is a simple aexample
+
+```lisp
+(regex-case line
+  ("^\\s+;" ())
+  ((:sequence
+    :start-anchor
+    (:greedy-repetition 1 nil :whitespace-char-class)
+    (:register (:greedy-repetition 0 nil :everything))
+    (:greedy-repetition 0 nil :whitespace-char-class)
+    :end-anchor)
+   (:registers (content))
+   content)
+  (otherwise ()
+   (error "what even is ~S" line))))
+```
+
+The regular expressions are literals and are compiled with `create-scanner` once only.  Each clause may then specify what parts of the match it is interested in by its second argument, which specifies which bits of the match, if any, you are interested in:
+
+- `:match <v>` binds the whole match to `<v>`;
+- `:match-start <v>` binds `<v>` to the start position of the whole match;
+- `:match-end <v>` does the same for the end position;
+- `:registers (<v> ...)` binds one or more register substrings to variables.  If a `<v>` is given either as `nil` or a symbol whose name is `_` then no binding is made for that register;
+- `:register-starts <v>` binds `<v>` to an array or register start positions;
+- `:register-ends <v>` does the same for the register end positions.
+
+As an example, if you are interested in the second register, you could get it like this:
+
+```lisp
+(regex-case line
+  (("^fog(gy)?\\s*(.*)$" (:registers (_ word))
+    ... word ...))
+  ...)
+```
+
+Here the `_` says 'not interested in this'.
+
+There is a default case which must be last:
+
+```lisp
+(regex-case v
+  ...
+  (otherwise ()
+   ...))
+```
+
+You can use `t` as well.  The default case can't bind any variables: the `()` is there just for consistency with other cases.
+
+### Notes
+`regex-case` compiles the regular expressions in a `load-time-value` form: that means that the various parameters which control `create-scanner` matter at that point: you can't set them later and expect them to do anything.
+
+I am not at all sure about the variable-binding syntax: that might change if I can think of anything nicer.
+
+### Package, module
+`regex-case` lives in and provides `:org.tfeb.toys.regex-case`.
 
 ---
 
