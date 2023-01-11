@@ -1,14 +1,12 @@
 ;;;; Regex case construct, experiment
 ;;;
 
-(in-package :cl-user)
-
 #+org.tfeb.tools.require-module
 (org.tfeb.tools.require-module:needs
  ("cl-ppcre" :fallback ql:quickload)
  ((:org.tfeb.hax.metatronic
    :org.tfeb.hax.collecting)
-        :compile t))
+  :compile t))
 
 (defpackage :org.tfeb.toys.regex-case
   (:use
@@ -62,7 +60,7 @@
                  `(return-from <regex-case>
                     (locally ,@decls/forms)))
                 (otherwise
-                 `(multiple-value-bind (<ms> <me> <rsv> <res>)
+                 `(multiple-value-bind (<ms> <me> <rsv> <rev>)
                       (scan (load-time-value (create-scanner ',pattern))
                             <string>)
                     (declare (ignorable <ms> <me> <rsv> <rev>))
