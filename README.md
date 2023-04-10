@@ -87,7 +87,7 @@ CL only has global *special* variables, which are dynamically scoped.  But it's 
 
 **`defglex*`** is like `defparameter`: you can't omit the value and it is set each time.
 
-**`make-glex-readtable`\*\* will construct a readtable in which `#$x` refers to a global lexical variable `x`.  It has three keyword arguments:
+**`make-glex-readtable`** will construct a readtable in which `#$x` refers to a global lexical variable `x`.  It has three keyword arguments:
 
 - `from` is the readtable to copy, defaultly `*readtable*`;
 - `to` is the readtable to copy into, defaultly `nil`;
@@ -682,9 +682,93 @@ I am not at all sure about the variable-binding syntax: that might change if I c
 ### Package, module
 `regex-case` lives in and provides `:org.tfeb.toys.regex-case`.
 
+## C-style enumerations: `enumerations`
+[Largely written by Zyni.] In C and other primitive languages, enumerations are a way of defining a small number of integer constants.  This is only needed because these languages don't have symbols.
+
+But you might need to interact with C programs, and so, for fun, we wrote this.  It works in the obvious way by defining a number of constants whose values are integers.  By ensuring that the constants are defined at compile time, and stashing information about the definition, `enumeration-case` expands into comparisons with literal integers.
+
+Enumerations can also be extended from 'base' enumerations in a fairly obvious way.
+
+The documentation here is incomplete, as are the docstrings for the macros.
+
+**`define-enumeration`** defines an enumeration:
+
+```lisp
+(define-enumeration monster
+  small
+  big
+  tentacled)
+```
+
+defines, for instance, `monster.small` as `0` and so on.  You can control the separator, value for the constants and other things.
+
+A type is defined in terms of `member`.
+
+**`enumeration-case`** is a case construct for enumerations.
+
+```lisp
+(enumeration-case m
+ (monster.small ...)
+ (... ...)
+ (otherwise ...))
+```
+
+The constants are turned into literal integers at macroexpansion time.  You can also specify that the case must be over a particular enumeration:
+
+```lisp
+(enumeration-case (m :of monster)
+ ((small big) 'fight)
+ (tentacled 'run))
+```
+
+In this case you can use the short names since the macro knows what to look up.
+
+`enumerations` will never be more than a toy, I am sure: any real C FLI presumably provides better options.
+
+### A small example
+```lisp
+(define-enumeration monster
+  small
+  big
+  tentacled)
+
+(define-enumeration (interesting-monster :base monster)
+  furry
+  edible)
+
+(defun react (m)
+  (declare (type interesting-monster m))
+  (enumeration-case (m :of interesting-monster)
+    ((small big) 'walk-away)
+    (tentacled 'run-away)
+    (furry 'stroke)
+    (edible 'eat)
+    (otherwise
+     (error "what is this?"))))
+```
+
+And now
+
+```lisp
+> (react monster.small)
+walk-away
+
+> (react interesting-monster.tentacled)
+run-away
+
+> (typep interesting-monster.edible 'interesting-monster)
+t
+
+> (typep interesting-monster.edible 'monster)
+nil
+
+> (typep interesting-monster.small 'monster)
+t
+```
+
 ---
 
-The TFEB.ORG Lisp toys are copyright 1990-2022 Tim Bradshaw.  See `LICENSE` for the license.
+The TFEB.ORG Lisp toys are copyright 1990-2023 Tim Bradshaw.  See `LICENSE` for the license.
 
 ---
 

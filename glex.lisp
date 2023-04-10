@@ -27,9 +27,9 @@
 
 (defun glex-value (sym)
   (check-type sym symbol "a symbol")
-  (multiple-value-bind (boundp val) (get-properties (symbol-plist sym)
-                                                    '(glex-value))
-    (unless boundp
+  (let* ((unbound (load-time-value (cons nil nil)))
+         (val (get sym 'glex-value unbound)))
+    (when (eq val unbound)
       (error 'unbound-global-lexical :name sym))
     val))
 
