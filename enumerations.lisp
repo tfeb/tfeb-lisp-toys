@@ -120,13 +120,17 @@ There is no type check, even in the latter case."
              (etypecase key
                (integer key)
                (symbol
-                (if of
-                    (let ((found (assoc key (getf (enumeration-information of) ':map))))
-                      (cond
-                       (found (cdr found))
-                       ((eq (enumeration-constant-of key) of)
-                        (symbol-value key))
-                       (t (error "~S is not a key for ~S" key of)))))))))
+                (cond
+                 (of
+                  (let ((found (assoc key (getf (enumeration-information of) ':map))))
+                    (cond
+                     (found (cdr found))
+                     ((eq (enumeration-constant-of key) of)
+                      (symbol-value key))
+                     (t (error "~S is not a key for ~S" key of)))))
+                 ((boundp key)
+                  (symbol-value key))
+                 (t (error "key ~S is unbound" key)))))))
       `(case ,thing
          ,@(mapcar (lambda (clause)
                      (destructuring-bind (key/s &body forms) clause
