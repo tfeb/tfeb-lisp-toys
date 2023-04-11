@@ -766,6 +766,80 @@ nil
 t
 ```
 
+### Package, module
+`enumerations` lives in and provides `org.tfeb.toys.enumerations` .
+
+## Not FEXPRs: `fex`
+Ancient Lisps often had things called FEXPRs, or in Interlisp, NLAMBDAs: these were functions which got their arguments unevaluated.  In the function body you would then explicitly call `eval` to evaluate the arguments you needed.  FEXPRs were something people used before they really understood how macros should work: there is a lovely paper by Kent Pitman, [Special forms in Lisp](http://nhplace.com/kent/Papers/Special-Forms.html "Special forms in Lisp") where he discusses the various options and comes down on the side of macros.  This paper is worth reading both because it is well-written, but also because it demonstrates how confused the situation was in the 1970s and before.
+
+It's obvious that any literal version of FEXPRs is hopeless, and particularly so in a modern, lexically-scoped Lisp: evaluating arguments with`eval` means the arguments to them can't be compiled at all, and `eval` does not know about lexical bindings in any case.  Even in old Lisps it is unclear how something like `(funcall 'my-fexpr-function ...)` was meant to work (probably it never did work).
+
+But things a bit like FEXPRs can potentially be useful to allow what is essentially normal-order evaluation in an applicative-order language.  And macros, of course, can be used to implement something a bit like FEXPrs by turning arguments into promises.  This is what `fex` does.
+
+### Promises
+A *promise* is an object which wraps one or more expressions and will cause them to be evaluated when the promise is *forced*.  A promise is just a wrapper around an anonymous function whose body is the expressions of course.  Promises deal with lexical scope properly:
+
+```lisp
+(force (let ((x 1)) (delay (+ x 2))))
+```
+
+works the way it should.
+
+**`delay`** is a macro which turns one or more forms into a promise: `(delay form ...)` will return a promise which, when forced, will evaluate the forms and return their value[^5].
+
+**`force`** will force a promise, evaluating its forms if need be.  If the promise has already been forced it simply returns the same value as when it was forced.
+
+**`promisep`** tells you if something is a promise.
+
+**`forcedp`** tells you if a promise has been forced.
+
+**`ensure`** is a utility function: if its argument is a promise it will force it, otherwise it returns its argument.  `ensure` is useful in cases where you do not know, and do not want to know, if an object is a promise.
+
+### The implementation of`fex`es
+The obvious implementation of a `fex`is as a macro which suitably wrap `delay` forms around its arguments, and then calls the function corresponding to the `fex` with the resulting promises.  This is fine if all you ever want is very simple argument lists for the `fex`, but it will break horribly for keyword arguments: a form like
+
+```lisp
+(my-fex x :y (complicated-function ...))
+```
+
+will get turned into something like
+
+```lisp
+(funcall (symbol-fex 'my-fex)
+         (delay x)
+         (delay :y)
+         (delay (complicated-function)))
+```
+
+This both means that keyword arguments wont work and also that things end up getting turned into promises which really do not need to be.
+
+So instead, `fex`es work a little bit more subtly: rather than blindly wrapping the arguments in `delay`, it only wraps arguments for which `constantp` is false in the macro environment.  This means that keywords, for instance, get passed to the function as is, so keyword arguments will work.  It *also* means that you can't blindly assume that the function's arguments are promises as they may not be.  This is what `ensure` is for: you can safely `ensure` any argument, regardless of whether or not it is a promise.
+
+**`define-fex`** defines a `fex`.  This is the same as `defun`, although `fex` names must be symbols (so in particular you can't define `fex`es for `setf` functions).  Arguments which are not detectably constant are passed as promises: using `ensure` on any argument is safe.  A `fex` only works as a `fex` when its name is the first element of a compound form, as `fex`es are implemented as macros which call the underlying function after wrapping arguments suitably.  `fex`es are not functions, and are not `fboundp`.
+
+**`fex-boundp`** will tell you if a symbol has a `fex` definition.
+
+**`symbol-fex`** is the accessor for the function of a `fex`.
+
+### Notes on `fex`es
+A simple implementation of an `if`-like form is:
+
+```lisp
+(define-fex fif (test then else)
+  (if (ensure test) (ensure then) (ensure else)))
+```
+
+You can call the `symbol-fex` of a symbol, and if it is careful to use `ensure` everywhere it should, things should just work.
+
+It's tempting therefore to implement `fex`es as conventional functions, using a compiler macro to do the appropriate massaging on the arguments.  I think that would be sufficiently horrible and unreliable that I didn't try it however.
+
+Promises should be thread-safe, assuming that slot access of structures is atomic.  They may evaluate their forms more than once, but there should be not race between a promise being marked as forced and it actually being forced.
+
+I have written a previous version of things like `FEXPR`s which I seem to have lost: it was, I think, more elaborate than this one.
+
+### Package, module
+`fex` lives in and provides `org.tfeb.toys.fex`.
+
 ---
 
 The TFEB.ORG Lisp toys are copyright 1990-2023 Tim Bradshaw.  See `LICENSE` for the license.
@@ -779,3 +853,5 @@ The TFEB.ORG Lisp toys are copyright 1990-2023 Tim Bradshaw.  See `LICENSE` for 
 [^3]:	I once had a much more elaborate system along these lines based around having looked at, I think, C++'s version of this sort of idea (or was it Java's?  I forget), and this system did force friendship relations to be bidirectional.  I probably still have that code somewhere, and I might one day revive it.
 
 [^4]:	There was a previous `fluids` module.  The name 'fluid' comes from Cambridge Lisp / Standard Lisp, although it might go back further than that.  In those languages you would declare a variable 'fluid' which told the compiler that the full dynamic-binding semantics for it should be kept, even in compiled code.  Of course for both those languages compiled code and interpreted code often had different semantics: I am pretty sure that *all* variables in interpreted code were implicitly fluid.
+
+[^5]:	If the forms return more than one value, all but the first is lost.
