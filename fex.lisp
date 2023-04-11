@@ -12,7 +12,7 @@
   (:export
    ;; I am not sure about exposing this lower-level promisery
    #:delay #:force #:promisep #:forcedp
-   #:ensure
+   #:ensure #:ensuring
    #:fex-boundp #:symbol-fex #:undefined-fex
    #:define-fex))
 
@@ -60,6 +60,12 @@
     (promise (force thing))
     (t thing)))
 
+(defmacro ensuring (variables &body forms)
+  `(let ,(mapcar (lambda (v)
+                   `(,v (ensure ,v)))
+                 variables)
+     ,@forms))
+
 (defmacro delay (&body forms)
   "Delay some forms, constructing a promise to evaluate them"
   `(make-promise (cons nil (lambda ()
@@ -94,7 +100,12 @@
   (warn "Doom: keywords are not constants"))
 
 (defmacro define-fex (name args &body doc/decls/forms)
-  "Define a fex"
+  "Define a fex
+
+A fex is like a function, but gets arguments which are not known to be
+constant as promises.  It should use ensure to get values of its
+arguments.  Fexes are implemented as macros which wrap arguments which
+constantp can't tell are constant in delay forms."
   (multiple-value-bind (doc decls forms) (parse-docstring-body doc/decls/forms)
     `(progn
        (setf (symbol-fex ',name)
@@ -102,8 +113,8 @@
                ,@decls
                (block ,name
                  ,@forms)))
-       (when ,doc
-         (setf (documentation ',name 'function) ,doc))
+       ,@(when doc
+           `((setf (documentation ',name 'function) ,doc)))
        (defmacro ,name (&environment env &rest arguments)
          `(funcall (symbol-fex ',',name)
                    ,@(mapcar (lambda (a)

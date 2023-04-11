@@ -7,7 +7,7 @@ The documentation is generally rather sparse, and it’s also just in the order 
 
 ## General
 ### Modules
-All of these things are independent modules, providing something which looks like `org.tfeb.toys.<module>`.  There is no ASDF or other system definition for all of them.  If they need other things either from amongst themselves or from other modules I've written they'll do so using [`require-module`](https://github.com/tfeb/tfeb-lisp-tools#requiring-modules-with-searching-require-module "require-module") which you'll need to have installed in that case, or if you don't to have loaded those modules some other way.  In the case that they need things written by other people or other larger systems they'll do that using [Quicklisp](https://www.quicklisp.org/ "Quicklisp").  Some of them do the former, none currently do the latter.
+All of these things are independent modules, providing something which looks like `org.tfeb.toys.<module>`.  There is no ASDF or other system definition for all of them.  If they need other things either from amongst themselves or from other modules I've written they'll do so using [`require-module`](https://github.com/tfeb/tfeb-lisp-tools#requiring-modules-with-searching-require-module "require-module") which you'll need to have installed in that case, or if you don't to have loaded those modules some other way.  In the case that they need things written by other people or other larger systems they'll do that using [Quicklisp](https://www.quicklisp.org/ "Quicklisp").  Some of them do the former, only `regex-case` currently does the latter.
 
 ### Portability
 All of the toys purport to be portable Common Lisp, although several of them need each other and other things.
@@ -795,6 +795,8 @@ works the way it should.
 
 **`ensure`** is a utility function: if its argument is a promise it will force it, otherwise it returns its argument.  `ensure` is useful in cases where you do not know, and do not want to know, if an object is a promise.
 
+**`ensuring`** is a macro which rebinds a list of variables to ensured versions of themselves.  So `(ensuring (x y) ...)` is the same as `(let ((x (ensure x)) (y (ensure y))) ...)`.  It's useful to make sure that you don't force promises more often than you need to.
+
 ### The implementation of`fex`es
 The obvious implementation of a `fex`is as a macro which suitably wrap `delay` forms around its arguments, and then calls the function corresponding to the `fex` with the resulting promises.  This is fine if all you ever want is very simple argument lists for the `fex`, but it will break horribly for keyword arguments: a form like
 
@@ -811,7 +813,7 @@ will get turned into something like
          (delay (complicated-function)))
 ```
 
-This both means that keyword arguments wont work and also that things end up getting turned into promises which really do not need to be.
+This both means that keyword arguments won't work and also that things end up getting turned into promises which really do not need to be.
 
 So instead, `fex`es work a little bit more subtly: rather than blindly wrapping the arguments in `delay`, it only wraps arguments for which `constantp` is false in the macro environment.  This means that keywords, for instance, get passed to the function as is, so keyword arguments will work.  It *also* means that you can't blindly assume that the function's arguments are promises as they may not be.  This is what `ensure` is for: you can safely `ensure` any argument, regardless of whether or not it is a promise.
 

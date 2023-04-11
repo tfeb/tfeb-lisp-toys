@@ -3,7 +3,10 @@
 
 #+org.tfeb.tools.require-module
 (org.tfeb.tools.require-module:needs
+ #+Quicklisp
  ("cl-ppcre" :fallback ql:quickload)
+ #-Quicklisp
+ "cl-ppcre"
  ((:org.tfeb.hax.metatronic
    :org.tfeb.hax.collecting)
   :compile t))
