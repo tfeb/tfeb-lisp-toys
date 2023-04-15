@@ -797,8 +797,8 @@ works the way it should.
 
 **`ensuring`** is a macro which rebinds a list of variables to ensured versions of themselves.  So `(ensuring (x y) ...)` is the same as `(let ((x (ensure x)) (y (ensure y))) ...)`.  It's useful to make sure that you don't force promises more often than you need to.
 
-### The implementation of`fex`es
-The obvious implementation of a `fex`is as a macro which suitably wrap `delay` forms around its arguments, and then calls the function corresponding to the `fex` with the resulting promises.  This is fine if all you ever want is very simple argument lists for the `fex`, but it will break horribly for keyword arguments: a form like
+### The implementation of fexes
+The obvious implementation of a fex is as a macro which suitably wraps `delay` forms around its arguments, and then calls the function corresponding to the fex with the resulting promises.  This is fine if all you ever want is very simple argument lists for the fex, but it will break horribly for keyword arguments: a form like
 
 ```lisp
 (my-fex x :y (complicated-function ...))
@@ -815,15 +815,19 @@ will get turned into something like
 
 This both means that keyword arguments won't work and also that things end up getting turned into promises which really do not need to be.
 
-So instead, `fex`es work a little bit more subtly: rather than blindly wrapping the arguments in `delay`, it only wraps arguments for which `constantp` is false in the macro environment.  This means that keywords, for instance, get passed to the function as is, so keyword arguments will work.  It *also* means that you can't blindly assume that the function's arguments are promises as they may not be.  This is what `ensure` is for: you can safely `ensure` any argument, regardless of whether or not it is a promise.
+So instead, fexes work a little bit more subtly: rather than blindly wrapping the arguments in `delay`, it only wraps arguments for which `constantp` is false in the macro environment.  This means that keywords, for instance, get passed to the function as is, so keyword arguments will work.  It *also* means that you can't blindly assume that the function's arguments are promises as they may not be.  This is what `ensure` is for: you can safely `ensure` any argument, regardless of whether or not it is a promise.
 
-**`define-fex`** defines a `fex`.  This is the same as `defun`, although `fex` names must be symbols (so in particular you can't define `fex`es for `setf` functions).  Arguments which are not detectably constant are passed as promises: using `ensure` on any argument is safe.  A `fex` only works as a `fex` when its name is the first element of a compound form, as `fex`es are implemented as macros which call the underlying function after wrapping arguments suitably.  `fex`es are not functions, and are not `fboundp`.
+**`define-fex`** defines a fex.  This is the same as `defun`, although fex names must be symbols (so in particular you can't define fexes for `setf` functions).  Arguments which are not detectably constant are passed as promises: using `ensure` on any argument is safe.  A fex only works as a fex when its name is the first element of a compound form, as fexes are implemented as macros which call the underlying function after wrapping arguments suitably.  fexes are not functions, and are not `fboundp`.
 
-**`fex-boundp`** will tell you if a symbol has a `fex` definition.
+**`fex-boundp`** will tell you if a symbol has a global fex definition.
 
-**`symbol-fex`** is the accessor for the function of a `fex`.
+**`symbol-fex`** is the accessor for the function of a fex.
 
-### Notes on `fex`es
+**`flet/fex`** is `flet` for fexes.  It works by using `flet` to bind a bunch of functions and then `macrolet` to bind suitable wrappers.
+
+**`labels/fex`** is `labels` for fexes: it works by using `macrolet` to bind wrappers and then `labels` to bind suitable functions: because the function bodies are within the `macrolet` recursive calls work.
+
+### Notes on fexes
 A simple implementation of an `if`-like form is:
 
 ```lisp
@@ -833,11 +837,11 @@ A simple implementation of an `if`-like form is:
 
 You can call the `symbol-fex` of a symbol, and if it is careful to use `ensure` everywhere it should, things should just work.
 
-It's tempting therefore to implement `fex`es as conventional functions, using a compiler macro to do the appropriate massaging on the arguments.  I think that would be sufficiently horrible and unreliable that I didn't try it however.
+It's tempting therefore to implement fexes as conventional functions, using a compiler macro to do the appropriate massaging on the arguments.  I think that would be sufficiently horrible and unreliable that I didn't try it however.
 
 Promises should be thread-safe, assuming that slot access of structures is atomic.  They may evaluate their forms more than once, but there should be not race between a promise being marked as forced and it actually being forced.
 
-I have written a previous version of things like `FEXPR`s which I seem to have lost: it was, I think, more elaborate than this one.
+I have written a previous version of things like `FEXPR`s which I seem to have lost: it was, I think, more elaborate than this one, but probably not as good.
 
 ### Package, module
 `fex` lives in and provides `org.tfeb.toys.fex`.

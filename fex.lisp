@@ -14,7 +14,9 @@
    #:delay #:force #:promisep #:forcedp
    #:ensure #:ensuring
    #:fex-boundp #:symbol-fex #:undefined-fex
-   #:define-fex))
+   #:define-fex
+   #:flet/fex
+   #:labels/fex))
 
 (in-package :org.tfeb.toys.fex)
 
@@ -78,6 +80,14 @@
   (:documentation
    "The error raised when a fex is not defined"))
 
+(define-condition simple-program-error (program-error simple-error)
+  ())
+
+(defun simple-program-error (control &rest arguments)
+  (error 'simple-program-error
+         :format-control control
+         :format-arguments arguments))
+
 (declaim (inline symbol-fex (setf symbol-fex)))
 
 (defun fex-boundp (s)
@@ -99,6 +109,14 @@
 (unless (constantp ':org.tfeb.toys.fex)
   (warn "Doom: keywords are not constants"))
 
+(defun expand-fex-call (to-call environment arguments)
+  `(funcall ,to-call
+            ,@(mapcar (lambda (a)
+                        (if (constantp a environment)
+                            a
+                          `(delay ,a)))
+                      arguments)))
+
 (defmacro define-fex (name args &body doc/decls/forms)
   "Define a fex
 
@@ -115,10 +133,55 @@ constantp can't tell are constant in delay forms."
                  ,@forms)))
        ,@(when doc
            `((setf (documentation ',name 'function) ,doc)))
-       (defmacro ,name (&environment env &rest arguments)
-         `(funcall (symbol-fex ',',name)
-                   ,@(mapcar (lambda (a)
-                               (if (constantp a env)
-                                   a
-                                 `(delay ,a)))
-                             arguments))))))
+       (defmacro ,name (&environment environment &rest arguments)
+         (expand-fex-call `(symbol-fex ',',name) environment arguments)))))
+
+;;; It is interesting that these two are identical except for
+;;; inverting the order of binding
+;;;
+
+(defmacro flet/fex (bindings &body decls/forms)
+  "Like FLET but for fexes"
+  (let ((anons (mapcar (lambda (b)
+                         (unless (and (listp b) (>= (length b) 3))
+                           (simple-program-error "bad binding ~S" b))
+                         (let ((n (first b)))
+                           (unless (symbolp n)
+                             (simple-program-error "fex name ~S not a symbol" n))
+                           (make-symbol (symbol-name n))))
+                       bindings)))
+    `(flet ,(mapcar (lambda (a b)
+                      `(,a ,@(rest b)))
+                      anons bindings)
+       (macrolet ,(mapcar (lambda (a b)
+                            `(,(first b)
+                              (&environment environment &rest arguments)
+                              (expand-fex-call `(function ,',a) environment arguments)))
+                          anons bindings)
+         ,@decls/forms))))
+
+#+(and LispWorks LW-Editor)
+(editor:setup-indent "flet/fex" 1 nil nil 'flet)
+
+(defmacro labels/fex (bindings &body decls/forms)
+  "Like LABELS but for fexes"
+  (let ((anons (mapcar (lambda (b)
+                         (unless (and (listp b) (>= (length b) 3))
+                           (simple-program-error "bad binding ~S" b))
+                         (let ((n (first b)))
+                           (unless (symbolp n)
+                             (simple-program-error "fex name ~S not a symbol" n))
+                           (make-symbol (symbol-name n))))
+                       bindings)))
+    `(macrolet ,(mapcar (lambda (a b)
+                          `(,(first b)
+                            (&environment environment &rest arguments)
+                            (expand-fex-call `(function ,',a) environment arguments)))
+                        anons bindings)
+       (labels ,(mapcar (lambda (a b)
+                          `(,a ,@(rest b)))
+                        anons bindings)
+         ,@decls/forms))))
+
+#+(and LispWorks LW-Editor)
+(editor:setup-indent "labels/fex" 1 nil nil 'flet)
