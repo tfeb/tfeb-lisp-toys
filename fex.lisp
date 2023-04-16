@@ -16,7 +16,8 @@
    #:fex-boundp #:symbol-fex #:undefined-fex
    #:define-fex
    #:flet/fex
-   #:labels/fex))
+   #:labels/fex
+   #:funcall/fex))
 
 (in-package :org.tfeb.toys.fex)
 
@@ -185,3 +186,6 @@ constantp can't tell are constant in delay forms."
 
 #+(and LispWorks LW-Editor)
 (editor:setup-indent "labels/fex" 1 nil nil 'flet)
+
+(defmacro funcall/fex (&environment environment f &rest arguments)
+  (expand-fex-call f environment arguments))

@@ -827,6 +827,8 @@ So instead, fexes work a little bit more subtly: rather than blindly wrapping th
 
 **`labels/fex`** is `labels` for fexes: it works by using `macrolet` to bind wrappers and then `labels` to bind suitable functions: because the function bodies are within the `macrolet` recursive calls work.
 
+**`funcall/fex`** is like `funcall` but it delays its arguments.
+
 ### Notes on fexes
 A simple implementation of an `if`-like form is:
 
@@ -837,7 +839,14 @@ A simple implementation of an `if`-like form is:
 
 You can call the `symbol-fex` of a symbol, and if it is careful to use `ensure` everywhere it should, things should just work.
 
-It's tempting therefore to implement fexes as conventional functions, using a compiler macro to do the appropriate massaging on the arguments.  I think that would be sufficiently horrible and unreliable that I didn't try it however.
+`funcall/fex` is as far as you can easily go: you can't write `apply/fex` without making much larger changes to the language. Somerhing like
+
+```lisp
+(let ((l (list ...)))
+  (apply/fex f l))
+```
+
+can't work unless `list` does not evaluate its arguments.  This is the point where you start actually needing a normal-order language rather than a hack like this.
 
 Promises should be thread-safe, assuming that slot access of structures is atomic.  They may evaluate their forms more than once, but there should be not race between a promise being marked as forced and it actually being forced.
 
