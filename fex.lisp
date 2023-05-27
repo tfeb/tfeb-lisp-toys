@@ -35,7 +35,12 @@
 (defstruct (promise
             (:print-function (lambda (o s d)
                                (declare (ignore d))
-                               (print-unreadable-object (o s :type t :identity t))))
+                               (print-unreadable-object (o s :identity t)
+                                 ;; Pretty random choices but seem reasonable
+                                 (let ((*print-length* 3)
+                                       (*print-level* 4))
+                                   (format s "promise of ~S"
+                                           (promise-source-form o))))))
             (:constructor make-promise (slot source-form))
             (:predicate promisep))
   "A promise which can be forced"
