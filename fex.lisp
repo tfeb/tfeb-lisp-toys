@@ -5,13 +5,15 @@
 
 #+org.tfeb.tools.require-module
 (org.tfeb.tools.require-module:needs
- (:org.tfeb.hax.utilities :compile t))
+ ((:org.tfeb.hax.utilities
+   :org.tfeb.hax.spam)
+  :compile t))
 
 (defpackage :org.tfeb.toys.fex
-  (:use :cl :org.tfeb.hax.utilities)
+  (:use :cl :org.tfeb.hax.utilities :org.tfeb.hax.spam)
   (:export
    ;; I am not sure about exposing this lower-level promisery
-   #:delay #:force #:promisep #:forcedp
+   #:delay #:force #:promisep #:forcedp #:promise-source-form
    #:ensure #:ensuring
    #:fex-boundp #:symbol-fex #:undefined-fex
    #:define-fex
@@ -25,7 +27,7 @@
 
 ;;;; Atomic promises
 ;;;
-;;; The form may be evaluated several times if there is a race, but
+;;; The forms may be evaluated several times if there is a race, but
 ;;; assuming that assignment to structure slots is atomic, things
 ;;; should remain consistent.
 ;;;
@@ -34,11 +36,12 @@
             (:print-function (lambda (o s d)
                                (declare (ignore d))
                                (print-unreadable-object (o s :type t :identity t))))
-            (:constructor make-promise (slot))
+            (:constructor make-promise (slot source-form))
             (:predicate promisep))
   "A promise which can be forced"
   (slot (load-time-value (cons t nil))
-        :type cons))
+        :type cons)
+  (source-form nil :read-only t))
 
 (defun force (p)
   "Force a promise, returning its value and computing it on the first call"
@@ -63,16 +66,32 @@
     (promise (force thing))
     (t thing)))
 
-(defmacro ensuring (variables &body forms)
-  `(let ,(mapcar (lambda (v)
-                   `(,v (ensure ,v)))
-                 variables)
+(define-condition ensuring-error (program-error simple-error)
+  ())
+
+(defmacro ensuring (bindings &body forms)
+  `(let ,(mapcar (lambda (b)
+                   (matching b
+                     ((is-type 'symbol)
+                      `(,b (ensure ,b)))
+                     ((list-matches (is-type 'symbol)) ;not sure this should be OK
+                      `(,(first b) (ensure ,(first b))))
+                     ((list-matches (is-type 'symbol) (any))
+                      `(,(first b) (ensure ,(second b))))
+                     (otherwise
+                      (error 'ensuring-error
+                             :format-control "bad ensuring binding ~S"
+                             :format-arguments (list b)))))
+                 bindings)
      ,@forms))
 
 (defmacro delay (&body forms)
   "Delay some forms, constructing a promise to evaluate them"
   `(make-promise (cons nil (lambda ()
-                             ,@forms))))
+                             ,@forms))
+                 ',(if (= (length forms) 1)
+                       (first forms)
+                     `(progn ,@forms))))
 
 (define-condition undefined-fex (cell-error)
   ()

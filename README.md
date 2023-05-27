@@ -783,7 +783,7 @@ A *promise* is an object which wraps one or more expressions and will cause them
 (force (let ((x 1)) (delay (+ x 2))))
 ```
 
-works the way it should.
+works the way it should.  As well as the things you'd normally expect a promise to do, promises keep their source forms: this has no use other than debugging.
 
 **`delay`** is a macro which turns one or more forms into a promise: `(delay form ...)` will return a promise which, when forced, will evaluate the forms and return their value[^5].
 
@@ -793,9 +793,11 @@ works the way it should.
 
 **`forcedp`** tells you if a promise has been forced.
 
+**`promise-source-form`** is the source form of a promise: if `delay` has more than one argument it will be `(progn ...)`.
+
 **`ensure`** is a utility function: if its argument is a promise it will force it, otherwise it returns its argument.  `ensure` is useful in cases where you do not know, and do not want to know, if an object is a promise.
 
-**`ensuring`** is a macro which rebinds a list of variables to ensured versions of themselves.  So `(ensuring (x y) ...)` is the same as `(let ((x (ensure x)) (y (ensure y))) ...)`.  It's useful to make sure that you don't force promises more often than you need to.
+**`ensuring`** is a macro which rebinds a list of variables to ensured versions of themselves.  So `(ensuring (x y) ...)` is the same as `(let ((x (ensure x)) (y (ensure y))) ...)`.  It's useful to make sure that you don't force promises more often than you need to.  `ensuring` in fact understands `let`-style bindings: `(ensuring ((x y)) ...)` will bind `x` to the result of ensuring `y`.
 
 ### The implementation of fexes
 The obvious implementation of a fex is as a macro which suitably wraps `delay` forms around its arguments, and then calls the function corresponding to the fex with the resulting promises.  This is fine if all you ever want is very simple argument lists for the fex, but it will break horribly for keyword arguments: a form like
