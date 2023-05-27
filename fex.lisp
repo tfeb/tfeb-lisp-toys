@@ -58,6 +58,14 @@
   (declare (type promise p))
   (car (promise-slot p)))
 
+(define-condition simple-program-error (program-error simple-error)
+  ())
+
+(defun simple-program-error (control &rest arguments)
+  (error 'simple-program-error
+         :format-control control
+         :format-arguments arguments))
+
 (declaim (inline ensure))
 
 (defun ensure (thing)
@@ -65,9 +73,6 @@
   (typecase thing
     (promise (force thing))
     (t thing)))
-
-(define-condition ensuring-error (program-error simple-error)
-  ())
 
 (defmacro ensuring (bindings &body forms)
   `(let ,(mapcar (lambda (b)
@@ -79,9 +84,7 @@
                      ((list-matches (is-type 'symbol) (any))
                       `(,(first b) (ensure ,(second b))))
                      (otherwise
-                      (error 'ensuring-error
-                             :format-control "bad ensuring binding ~S"
-                             :format-arguments (list b)))))
+                      (simple-program-error "bad ensuring binding ~S" b))))
                  bindings)
      ,@forms))
 
@@ -99,14 +102,6 @@
              (format s "Undefined fex ~S" (cell-error-name c))))
   (:documentation
    "The error raised when a fex is not defined"))
-
-(define-condition simple-program-error (program-error simple-error)
-  ())
-
-(defun simple-program-error (control &rest arguments)
-  (error 'simple-program-error
-         :format-control control
-         :format-arguments arguments))
 
 (declaim (inline symbol-fex (setf symbol-fex)))
 
