@@ -774,7 +774,7 @@ Ancient Lisps often had things called FEXPRs, or in Interlisp, NLAMBDAs: these w
 
 It's obvious that any literal version of FEXPRs is hopeless, and particularly so in a modern, lexically-scoped Lisp: evaluating arguments with`eval` means the arguments to them can't be compiled at all, and `eval` does not know about lexical bindings in any case.  Even in old Lisps it is unclear how something like `(funcall 'my-fexpr-function ...)` was meant to work (probably it never did work).
 
-But things a bit like FEXPRs can potentially be useful to allow what is essentially normal-order evaluation in an applicative-order language.  And macros, of course, can be used to implement something a bit like FEXPrs by turning arguments into promises.  This is what `fex` does.
+But things a bit like FEXPRs can potentially be useful to allow what is essentially normal-order evaluation in an applicative-order language.  And macros, of course, can be used to implement something a bit like FEXPRs by turning arguments into promises.  This is what `fex` does.
 
 ### Promises
 A *promise* is an object which wraps one or more expressions and will cause them to be evaluated when the promise is *forced*.  A promise is just a wrapper around an anonymous function whose body is the expressions of course.  Promises deal with lexical scope properly:
@@ -783,11 +783,11 @@ A *promise* is an object which wraps one or more expressions and will cause them
 (force (let ((x 1)) (delay (+ x 2))))
 ```
 
-works the way it should.  As well as the things you'd normally expect a promise to do, promises keep their source forms: this has no use other than debugging.
+works the way it should.  As well as the things you'd normally expect a promise to do, promises keep their source forms: this has no use other than debugging and printing.
 
 **`delay`** is a macro which turns one or more forms into a promise: `(delay form ...)` will return a promise which, when forced, will evaluate the forms and return their value[^5].
 
-**`force`** will force a promise, evaluating its forms if need be.  If the promise has already been forced it simply returns the same value as when it was forced.
+**`force`** will force a promise, evaluating its forms if need be.  If the promise has already been forced it simply returns the same value as when it was first forced: promises memoize their value in other words[^6].
 
 **`promisep`** tells you if something is a promise.
 
@@ -817,7 +817,7 @@ will get turned into something like
 
 This both means that keyword arguments won't work and also that things end up getting turned into promises which really do not need to be.
 
-So instead, fexes work a little bit more subtly: rather than blindly wrapping the arguments in `delay`, it only wraps arguments for which `constantp` is false in the macro environment.  This means that keywords, for instance, get passed to the function as is, so keyword arguments will work.  It *also* means that you can't blindly assume that the function's arguments are promises as they may not be.  This is what `ensure` is for: you can safely `ensure` any argument, regardless of whether or not it is a promise.
+So instead, fexes work a little bit more subtly: rather than blindly wrapping the arguments in `delay`, they only wrap arguments for which `constantp` is false in the macro environment.  This means that keywords, for instance, get passed to the function as is, so keyword arguments will work.  It *also* means that you can't blindly assume that the function's arguments are promises as they may not be.  This is what `ensure` is for: you can safely `ensure` any argument, regardless of whether or not it is a promise.
 
 **`define-fex`** defines a fex.  This is the same as `defun`, although fex names must be symbols (so in particular you can't define fexes for `setf` functions).  Arguments which are not detectably constant are passed as promises: using `ensure` on any argument is safe.  A fex only works as a fex when its name is the first element of a compound form, as fexes are implemented as macros which call the underlying function after wrapping arguments suitably.  fexes are not functions, and are not `fboundp`.
 
@@ -872,3 +872,5 @@ The TFEB.ORG Lisp toys are copyright 1990-2023 Tim Bradshaw.  See `LICENSE` for 
 [^4]:	There was a previous `fluids` module.  The name 'fluid' comes from Cambridge Lisp / Standard Lisp, although it might go back further than that.  In those languages you would declare a variable 'fluid' which told the compiler that the full dynamic-binding semantics for it should be kept, even in compiled code.  Of course for both those languages compiled code and interpreted code often had different semantics: I am pretty sure that *all* variables in interpreted code were implicitly fluid.
 
 [^5]:	If the forms return more than one value, all but the first is lost.
+
+[^6]:	Assuming assignment to structure fields is atomic then the memoization done by promises should be thread-safe: the forms in a promise may be evaluated more than once but there should never be confusion about whether or not they have been evaluated.  What I've assumed is that, if a promise had two fields, then something like `(setf (promise-value p) value (promise-forced-p p) t)` might not be safe, because other threads might see the two assignments in the other order.  So instead there is a single field which initially contains a cons of `nil` and the promise's function, and into which `force` stores a new cons of `t` and the computed value.   I think this is safe on the assumption that assignment to structure fields is atomic.
