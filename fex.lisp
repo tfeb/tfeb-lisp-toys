@@ -18,8 +18,10 @@
    #:delay #:force #:promisep #:forcedp #:promise-source-form
    #:ensure #:ensuring
    ;; same: this is not fexes (and it not used otherwise) but it's
-   ;; nice enough
+   ;; nice enough.  Should there be all the options?
    #:let/delayed #:let*/delayed
+   #:let/cached #:let*/cached
+   #:let/delayed/cached #:let*/delayed/cached
    #:fex-boundp #:symbol-fex #:undefined-fex
    #:define-fex
    #:flet/fex
@@ -117,7 +119,7 @@
                      `(progn ,@forms))))
 
 (defmacro let/delayed ((&rest bindings) &body decls/forms)
-  "A caching, delayed version of LET
+  "A delayed version of LET
 
 For each let-style binding, this evaluates the initform exactly once,
 at the time the binding is first referred to.  Later uses of the
@@ -145,7 +147,7 @@ don't work the way you might expect."
              (initform (second b))
              (secret-name (make-symbol (string (first b)))))
             (otherwise
-             (simple-program-error "bad let/delayed bunding ~S" b)))))
+             (simple-program-error "bad binding ~S" b)))))
     `(let ,(mapcar (lambda (s i)
                      `(,s (delay ,i)))
                    secret-names initforms)
@@ -155,7 +157,7 @@ don't work the way you might expect."
          ,@decls/forms))))
 
 (defmacro let*/delayed ((&rest bindings) &body decls/forms)
-  "A caching, delayed version of LET*
+  "A delayed version of LET*
 
 See LET/DELAYED"
   (case (length bindings)
@@ -166,6 +168,107 @@ See LET/DELAYED"
     (otherwise
      `(let/delayed (,(first bindings))
         (let*/delayed ,(rest bindings) ,@decls/forms)))))
+
+(defmacro let/cached ((&rest bindings) &body decls/forms)
+  "A cached version of LET
+
+This is like LET but, in compiled code, the initforms will only ever
+be evaluated only once.
+
+The 'variables' bound here are symbol macros, so declarations may not
+work the right way."
+  (multiple-value-bind (names initforms secret-names)
+      (with-collectors (name initform secret-name)
+        (dolist (b bindings)
+          (matching b
+            ((is-type 'symbol)
+             (name b)
+             (initform nil)
+             (secret-name (make-symbol (string b))))
+            ((list-matches (is-type 'symbol))
+             (name (first b))
+             (initform nil)
+             (secret-name (make-symbol (string (first b)))))
+            ((list-matches (is-type 'symbol) (any))
+             (name (first b))
+             (initform (second b))
+             (secret-name (make-symbol (string (first b)))))
+            (otherwise
+             (simple-program-error "bad binding ~S" b)))))
+    `(let ,(mapcar (lambda (s)
+                     `(,s (load-time-value (cons nil nil) nil)))
+                   secret-names)
+       ,@(mapcar (lambda (s i)
+                   `(unless (car ,s)
+                      (setf (cdr ,s) ,i
+                            (car ,s) t)))
+                 secret-names initforms)
+       (symbol-macrolet ,(mapcar (lambda (n s)
+                                   `(,n (cdr ,s)))
+                                 names secret-names)
+         ,@decls/forms))))
+
+(defmacro let*/cached ((&rest bindings) &body decls/forms)
+  "A cached version of LET*
+
+See LET/CACHED"
+  (case (length bindings)
+    (0
+     `(locally decls/forms))
+    (1
+     `(let/cached ,bindings ,@decls/forms))
+    (otherwise
+     `(let/cached (,(first bindings))
+        (let*/cached ,(rest bindings) ,@decls/forms)))))
+
+(defmacro let/delayed/cached ((&rest bindings) &body decls/forms)
+  "A delayed/cached version of LET
+
+This is like LET/DELAYED but, in compiled code, the initforms will
+only ever be evaluated once."
+  (multiple-value-bind (names initforms secret-names)
+      (with-collectors (name initform secret-name)
+        (dolist (b bindings)
+          (matching b
+            ((is-type 'symbol)
+             (name b)
+             (initform nil)
+             (secret-name (make-symbol (string b))))
+            ((list-matches (is-type 'symbol))
+             (name (first b))
+             (initform nil)
+             (secret-name (make-symbol (string (first b)))))
+            ((list-matches (is-type 'symbol) (any))
+             (name (first b))
+             (initform (second b))
+             (secret-name (make-symbol (string (first b)))))
+            (otherwise
+             (simple-program-error "bad binding ~S" b)))))
+    `(let ,(mapcar (lambda (s)
+                     `(,s (load-time-value (cons nil nil) nil)))
+                   secret-names)
+       ,@(mapcar (lambda (s i)
+                   `(unless (car ,s)
+                      (setf (cdr ,s) (delay ,i)
+                            (car ,s) t)))
+                 secret-names initforms)
+       (symbol-macrolet ,(mapcar (lambda (n s)
+                                   `(,n (force (cdr ,s))))
+                                 names secret-names)
+         ,@decls/forms))))
+
+(defmacro let*/delayed/cached ((&rest bindings) &body decls/forms)
+  "A cached, delayed version of LET*
+
+See LET/DELAYED/CACHED and also LET/DELAYED & LET*/DELAYED"
+  (case (length bindings)
+    (0
+     `(locally decls/forms))
+    (1
+     `(let/delayed/cached ,bindings ,@decls/forms))
+    (otherwise
+     `(let/delayed/cached (,(first bindings))
+        (let*/delayed/cached ,(rest bindings) ,@decls/forms)))))
 
 (define-condition undefined-fex (cell-error)
   ()

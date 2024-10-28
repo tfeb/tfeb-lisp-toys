@@ -799,17 +799,6 @@ works the way it should.  As well as the things you'd normally expect a promise 
 
 **`ensuring`** is a macro which rebinds a list of variables to ensured versions of themselves.  So `(ensuring (x y) ...)` is the same as `(let ((x (ensure x)) (y (ensure y))) ...)`.  It's useful to make sure that you don't force promises more often than you need to.  `ensuring` in fact understands `let`-style bindings: `(ensuring ((x y)) ...)` will bind `x` to the result of ensuring `y`.
 
-## Cached, delayed versions of `let` and `let*`
-Built on promises are two macros, `let/delayed` and `let*/delayed`.  Neither is used elswhere in the code.
-
-**`let/delayed`** is like `let` but initforms are evaluated as lazily as they can be, and at most once.
-
-**`let*/delayed`** is to `let/delayed` as `let*` is to `let`.
-
-The 'variables' bound by these macros are actually symbol macros, so declarations may not work the way you might expect.
-
-You can assign to the variables: if you do so before using the value of a binding the initform will never be evaluated.
-
 ### The implementation of fexes
 The obvious implementation of a fex is as a macro which suitably wraps `delay` forms around its arguments, and then calls the function corresponding to the fex with the resulting promises.  This is fine if all you ever want is very simple argument lists for the fex, but it will break horribly for keyword arguments: a form like
 
@@ -864,6 +853,23 @@ can't work unless `list` does not evaluate its arguments.  This is the point whe
 Promises should be thread-safe, assuming that slot access of structures is atomic.  They may evaluate their forms more than once, but there should be not race between a promise being marked as forced and it actually being forced.
 
 I have written a previous version of things like `FEXPR`s which I seem to have lost: it was, I think, more elaborate than this one, but probably not as good.
+
+### Cached and delayed versions of `let` and `let*`
+This family of macros is built mostly on promises.  Nothing else in `fex` uses them.  Their names are slightly subject to change, as they're too long
+
+**`let/delayed`** is like `let` but initforms are evaluated as lazily as they can be, and at most once per invocation.
+
+**`let*/delayed`** is to `let/delayed` as `let*` is to `let`.
+
+**`let/cached`** evaluates its initforms eagerly, but in compiled code they will only ever be evaluated once.  **`let*/cached`** is the corresponding sequential macro.  These are *not* built on promises.
+
+**`let/delayed/cached`** and **`let*/delayed/cached`** combine the previous two pairs into one: the initforms are as delayed as they can be and only evaluated once.
+
+The 'variables' bound by these macros are actually symbol macros, so declarations may not work the way you might expect.
+
+You can assign to the variables: for the delayed variants if you do so before using the value of a binding the initform will never be evaluated.
+
+`let/cached` will evaluate initforms each invocation for interpreted code (it uses `load-tme-value` for the cache).
 
 ### Package, module
 `fex` lives in and provides `org.tfeb.toys.fex`.
