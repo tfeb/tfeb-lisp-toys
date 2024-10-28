@@ -854,22 +854,22 @@ Promises should be thread-safe, assuming that slot access of structures is atomi
 
 I have written a previous version of things like `FEXPR`s which I seem to have lost: it was, I think, more elaborate than this one, but probably not as good.
 
-### Cached and delayed versions of `let` and `let*`
+### Cached and lazy versions of `let` and `let*`
 This family of macros is built mostly on promises.  Nothing else in `fex` uses them.  Their names are slightly subject to change, as they're too long
 
-**`let/delayed`** is like `let` but initforms are evaluated as lazily as they can be, and at most once per invocation.
+**`let/lazy`** is like `let` but initforms are evaluated as lazily as they can be, and at most once per invocation.
 
-**`let*/delayed`** is to `let/delayed` as `let*` is to `let`.
+**`let*/lazy`** is to `let/lazy` as `let*` is to `let`.
 
-**`let/cached`** evaluates its initforms eagerly, but in compiled code they will only ever be evaluated once.  **`let*/cached`** is the corresponding sequential macro.  These are *not* built on promises.
+**`let/once`** evaluates its initforms eagerly, but in compiled code they will only ever be evaluated once.  **`let*/once`** is the corresponding sequential macro.  These are *not* built on promises.
 
-**`let/delayed/cached`** and **`let*/delayed/cached`** combine the previous two pairs into one: the initforms are as delayed as they can be and only evaluated once.
+**`let/lazy/once`** and **`let*/lazy/once`** combine the previous two pairs into one: the initforms are as lazy as they can be and only evaluated once.
 
 The 'variables' bound by these macros are actually symbol macros, so declarations may not work the way you might expect.
 
-You can assign to the variables: for the delayed variants if you do so before using the value of a binding the initform will never be evaluated.
+You can assign to the variables: for the lazy variants if you do so before using the value of a binding the initform will never be evaluated.
 
-`let/cached` will evaluate initforms each invocation for interpreted code (it uses `load-tme-value` for the cache).
+`let/once` will evaluate initforms each invocation for interpreted code (it uses `load-tme-value` for the cache).
 
 ### Package, module
 `fex` lives in and provides `org.tfeb.toys.fex`.

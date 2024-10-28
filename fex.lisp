@@ -19,9 +19,9 @@
    #:ensure #:ensuring
    ;; same: this is not fexes (and it not used otherwise) but it's
    ;; nice enough.  Should there be all the options?
-   #:let/delayed #:let*/delayed
-   #:let/cached #:let*/cached
-   #:let/delayed/cached #:let*/delayed/cached
+   #:let/lazy #:let*/lazy
+   #:let/once #:let*/once
+   #:let/lazy/once #:let*/lazy/once
    #:fex-boundp #:symbol-fex #:undefined-fex
    #:define-fex
    #:flet/fex
@@ -66,7 +66,7 @@
         v))))
 
 (defun (setf force) (v p)
-  ;; This is really questionable, but it makes let/delayed be cooler
+  ;; This is really questionable, but it makes let/lazy be cooler
   (declare (type promise p))
   (let ((c (promise-slot p)))
     (if (car c)
@@ -118,8 +118,8 @@
                        (first forms)
                      `(progn ,@forms))))
 
-(defmacro let/delayed ((&rest bindings) &body decls/forms)
-  "A delayed version of LET
+(defmacro let/lazy ((&rest bindings) &body decls/forms)
+  "A lazy version of LET
 
 For each let-style binding, this evaluates the initform exactly once,
 at the time the binding is first referred to.  Later uses of the
@@ -156,20 +156,20 @@ don't work the way you might expect."
                                  names secret-names)
          ,@decls/forms))))
 
-(defmacro let*/delayed ((&rest bindings) &body decls/forms)
-  "A delayed version of LET*
+(defmacro let*/lazy ((&rest bindings) &body decls/forms)
+  "A lazy version of LET*
 
-See LET/DELAYED"
+See LET/LAZY"
   (case (length bindings)
     (0
      `(locally decls/forms))
     (1
-     `(let/delayed ,bindings ,@decls/forms))
+     `(let/lazy ,bindings ,@decls/forms))
     (otherwise
-     `(let/delayed (,(first bindings))
-        (let*/delayed ,(rest bindings) ,@decls/forms)))))
+     `(let/lazy (,(first bindings))
+        (let*/lazy ,(rest bindings) ,@decls/forms)))))
 
-(defmacro let/cached ((&rest bindings) &body decls/forms)
+(defmacro let/once ((&rest bindings) &body decls/forms)
   "A cached version of LET
 
 This is like LET but, in compiled code, the initforms will only ever
@@ -208,23 +208,23 @@ work the right way."
                                  names secret-names)
          ,@decls/forms))))
 
-(defmacro let*/cached ((&rest bindings) &body decls/forms)
+(defmacro let*/once ((&rest bindings) &body decls/forms)
   "A cached version of LET*
 
-See LET/CACHED"
+See LET/ONCE"
   (case (length bindings)
     (0
      `(locally decls/forms))
     (1
-     `(let/cached ,bindings ,@decls/forms))
+     `(let/once ,bindings ,@decls/forms))
     (otherwise
-     `(let/cached (,(first bindings))
-        (let*/cached ,(rest bindings) ,@decls/forms)))))
+     `(let/once (,(first bindings))
+        (let*/once ,(rest bindings) ,@decls/forms)))))
 
-(defmacro let/delayed/cached ((&rest bindings) &body decls/forms)
-  "A delayed/cached version of LET
+(defmacro let/lazy/once ((&rest bindings) &body decls/forms)
+  "A lazy & cached version of LET
 
-This is like LET/DELAYED but, in compiled code, the initforms will
+This is like LET/LAZY but, in compiled code, the initforms will
 only ever be evaluated once."
   (multiple-value-bind (names initforms secret-names)
       (with-collectors (name initform secret-name)
@@ -257,18 +257,18 @@ only ever be evaluated once."
                                  names secret-names)
          ,@decls/forms))))
 
-(defmacro let*/delayed/cached ((&rest bindings) &body decls/forms)
-  "A cached, delayed version of LET*
+(defmacro let*/lazy/once ((&rest bindings) &body decls/forms)
+  "A lazy & cached version of LET*
 
-See LET/DELAYED/CACHED and also LET/DELAYED & LET*/DELAYED"
+See LET/LAZY/ONCE and also LET/LAZY & LET*/LAZY"
   (case (length bindings)
     (0
      `(locally decls/forms))
     (1
-     `(let/delayed/cached ,bindings ,@decls/forms))
+     `(let/lazy/once ,bindings ,@decls/forms))
     (otherwise
-     `(let/delayed/cached (,(first bindings))
-        (let*/delayed/cached ,(rest bindings) ,@decls/forms)))))
+     `(let/lazy/once (,(first bindings))
+        (let*/lazy/once ,(rest bindings) ,@decls/forms)))))
 
 (define-condition undefined-fex (cell-error)
   ()
