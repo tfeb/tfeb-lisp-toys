@@ -6,15 +6,20 @@
 #+org.tfeb.tools.require-module
 (org.tfeb.tools.require-module:needs
  ((:org.tfeb.hax.utilities
-   :org.tfeb.hax.spam)
+   :org.tfeb.hax.spam
+   :org.tfeb.hax.collecting)
   :compile t))
 
 (defpackage :org.tfeb.toys.fex
-  (:use :cl :org.tfeb.hax.utilities :org.tfeb.hax.spam)
+  (:use :cl :org.tfeb.hax.utilities :org.tfeb.hax.spam :org.tfeb.hax.collecting)
   (:export
-   ;; I am not sure about exposing this lower-level promisery
+   ;; I was not sure about exposing this lower-level promisery, but I
+   ;; think it's nice enough
    #:delay #:force #:promisep #:forcedp #:promise-source-form
    #:ensure #:ensuring
+   ;; same: this is not fexes (and it not used otherwise) but it's
+   ;; nice enough
+   #:let/delayed #:let*/delayed
    #:fex-boundp #:symbol-fex #:undefined-fex
    #:define-fex
    #:flet/fex
@@ -55,6 +60,16 @@
     (if (car c)
         (cdr c)
       (let ((v (funcall (cdr c))))
+        (setf (promise-slot p) (cons t v))
+        v))))
+
+(defun (setf force) (v p)
+  ;; This is really questionable, but it makes let/delayed be cooler
+  (declare (type promise p))
+  (let ((c (promise-slot p)))
+    (if (car c)
+        (setf (cdr c) v)
+      (progn
         (setf (promise-slot p) (cons t v))
         v))))
 
@@ -100,6 +115,57 @@
                  ',(if (= (length forms) 1)
                        (first forms)
                      `(progn ,@forms))))
+
+(defmacro let/delayed ((&rest bindings) &body decls/forms)
+  "A caching, delayed version of LET
+
+For each let-style binding, this evaluates the initform exactly once,
+at the time the binding is first referred to.  Later uses of the
+variable return the cached value.  If the binding is never referred to
+then the initform is never evaluated.
+
+The 'variables' this binds can be assigned to: if you assign to such a
+variable before using its value the initform will never be evaluated.
+The 'variables' are really symbol macros so type declarations probably
+don't work the way you might expect."
+  (multiple-value-bind (names initforms secret-names)
+      (with-collectors (name initform secret-name)
+        (dolist (b bindings)
+          (matching b
+            ((is-type 'symbol)
+             (name b)
+             (initform nil)
+             (secret-name (make-symbol (string b))))
+            ((list-matches (is-type 'symbol))
+             (name (first b))
+             (initform nil)
+             (secret-name (make-symbol (string (first b)))))
+            ((list-matches (is-type 'symbol) (any))
+             (name (first b))
+             (initform (second b))
+             (secret-name (make-symbol (string (first b)))))
+            (otherwise
+             (simple-program-error "bad let/delayed bunding ~S" b)))))
+    `(let ,(mapcar (lambda (s i)
+                     `(,s (delay ,i)))
+                   secret-names initforms)
+       (symbol-macrolet ,(mapcar (lambda (n s)
+                                   `(,n (force ,s)))
+                                 names secret-names)
+         ,@decls/forms))))
+
+(defmacro let*/delayed ((&rest bindings) &body decls/forms)
+  "A caching, delayed version of LET*
+
+See LET/DELAYED"
+  (case (length bindings)
+    (0
+     `(locally decls/forms))
+    (1
+     `(let/delayed ,bindings ,@decls/forms))
+    (otherwise
+     `(let/delayed (,(first bindings))
+        (let*/delayed ,(rest bindings) ,@decls/forms)))))
 
 (define-condition undefined-fex (cell-error)
   ()

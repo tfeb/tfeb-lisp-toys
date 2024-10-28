@@ -799,6 +799,17 @@ works the way it should.  As well as the things you'd normally expect a promise 
 
 **`ensuring`** is a macro which rebinds a list of variables to ensured versions of themselves.  So `(ensuring (x y) ...)` is the same as `(let ((x (ensure x)) (y (ensure y))) ...)`.  It's useful to make sure that you don't force promises more often than you need to.  `ensuring` in fact understands `let`-style bindings: `(ensuring ((x y)) ...)` will bind `x` to the result of ensuring `y`.
 
+## Cached, delayed versions of `let` and `let*`
+Built on promises are two macros, `let/delayed` and `let*/delayed`.  Neither is used elswhere in the code.
+
+**`let/delayed`** is like `let` but initforms are evaluated as lazily as they can be, and at most once.
+
+**`let*/delayed`** is to `let/delayed` as `let*` is to `let`.
+
+The 'variables' bound by these macros are actually symbol macros, so declarations may not work the way you might expect.
+
+You can assign to the variables: if you do so before using the value of a binding the initform will never be evaluated.
+
 ### The implementation of fexes
 The obvious implementation of a fex is as a macro which suitably wraps `delay` forms around its arguments, and then calls the function corresponding to the fex with the resulting promises.  This is fine if all you ever want is very simple argument lists for the fex, but it will break horribly for keyword arguments: a form like
 
