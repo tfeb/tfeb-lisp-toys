@@ -118,6 +118,31 @@
                        (first forms)
                      `(progn ,@forms))))
 
+;;;; Lazy & cached versions of LET / LET*
+;;;
+;;; There's no attempt to get declarations right, which will hurt
+;;; especially for the LET* versions.
+;;;
+
+(defun parse-ll-bindings (bindings)
+  (with-collectors (name initform secret-name)
+    (dolist (b bindings)
+      (matching b
+        ((is-type 'symbol)
+         (name b)
+         (initform nil)
+         (secret-name (make-symbol (string b))))
+        ((list-matches (is-type 'symbol))
+         (name (first b))
+         (initform nil)
+         (secret-name (make-symbol (string (first b)))))
+        ((list-matches (is-type 'symbol) (any))
+         (name (first b))
+         (initform (second b))
+         (secret-name (make-symbol (string (first b)))))
+        (otherwise
+         (simple-program-error "bad binding ~S" b))))))
+
 (defmacro let/lazy ((&rest bindings) &body decls/forms)
   "A lazy version of LET
 
@@ -130,24 +155,7 @@ The 'variables' this binds can be assigned to: if you assign to such a
 variable before using its value the initform will never be evaluated.
 The 'variables' are really symbol macros so type declarations probably
 don't work the way you might expect."
-  (multiple-value-bind (names initforms secret-names)
-      (with-collectors (name initform secret-name)
-        (dolist (b bindings)
-          (matching b
-            ((is-type 'symbol)
-             (name b)
-             (initform nil)
-             (secret-name (make-symbol (string b))))
-            ((list-matches (is-type 'symbol))
-             (name (first b))
-             (initform nil)
-             (secret-name (make-symbol (string (first b)))))
-            ((list-matches (is-type 'symbol) (any))
-             (name (first b))
-             (initform (second b))
-             (secret-name (make-symbol (string (first b)))))
-            (otherwise
-             (simple-program-error "bad binding ~S" b)))))
+  (multiple-value-bind (names initforms secret-names) (parse-ll-bindings bindings)
     `(let ,(mapcar (lambda (s i)
                      `(,s (delay ,i)))
                    secret-names initforms)
@@ -177,24 +185,7 @@ be evaluated only once.
 
 The 'variables' bound here are symbol macros, so declarations may not
 work the right way."
-  (multiple-value-bind (names initforms secret-names)
-      (with-collectors (name initform secret-name)
-        (dolist (b bindings)
-          (matching b
-            ((is-type 'symbol)
-             (name b)
-             (initform nil)
-             (secret-name (make-symbol (string b))))
-            ((list-matches (is-type 'symbol))
-             (name (first b))
-             (initform nil)
-             (secret-name (make-symbol (string (first b)))))
-            ((list-matches (is-type 'symbol) (any))
-             (name (first b))
-             (initform (second b))
-             (secret-name (make-symbol (string (first b)))))
-            (otherwise
-             (simple-program-error "bad binding ~S" b)))))
+  (multiple-value-bind (names initforms secret-names) (parse-ll-bindings bindings)
     `(let ,(mapcar (lambda (s)
                      `(,s (load-time-value (cons nil nil) nil)))
                    secret-names)
@@ -226,24 +217,7 @@ See LET/ONCE"
 
 This is like LET/LAZY but, in compiled code, the initforms will
 only ever be evaluated once."
-  (multiple-value-bind (names initforms secret-names)
-      (with-collectors (name initform secret-name)
-        (dolist (b bindings)
-          (matching b
-            ((is-type 'symbol)
-             (name b)
-             (initform nil)
-             (secret-name (make-symbol (string b))))
-            ((list-matches (is-type 'symbol))
-             (name (first b))
-             (initform nil)
-             (secret-name (make-symbol (string (first b)))))
-            ((list-matches (is-type 'symbol) (any))
-             (name (first b))
-             (initform (second b))
-             (secret-name (make-symbol (string (first b)))))
-            (otherwise
-             (simple-program-error "bad binding ~S" b)))))
+  (multiple-value-bind (names initforms secret-names) (parse-ll-bindings bindings)
     `(let ,(mapcar (lambda (s)
                      `(,s (load-time-value (cons nil nil) nil)))
                    secret-names)
@@ -269,6 +243,9 @@ See LET/LAZY/ONCE and also LET/LAZY & LET*/LAZY"
     (otherwise
      `(let/lazy/once (,(first bindings))
         (let*/lazy/once ,(rest bindings) ,@decls/forms)))))
+
+;;;; FEXes themselves
+;;;
 
 (define-condition undefined-fex (cell-error)
   ()
