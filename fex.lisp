@@ -306,24 +306,31 @@ constantp can't tell are constant in delay forms."
 ;;; inverting the order of binding
 ;;;
 
+(defun parse-lf-bindings (bindings)
+  (with-collectors (anon name arglist body)
+    (dolist (b bindings)
+      (matching b
+        ((list*-matches (is-type 'symbol) (is-type 'list) (is-type 'list))
+         (destructuring-bind (name arglist . body) b
+           (anon (make-symbol (symbol-name name)))
+           (name name)
+           (arglist arglist)
+           (body body)))
+        (otherwise
+         (simple-program-error "bad binding ~S" b))))))
+
 (defmacro flet/fex (bindings &body decls/forms)
   "Like FLET but for fexes"
-  (let ((anons (mapcar (lambda (b)
-                         (unless (and (listp b) (>= (length b) 3))
-                           (simple-program-error "bad binding ~S" b))
-                         (let ((n (first b)))
-                           (unless (symbolp n)
-                             (simple-program-error "fex name ~S not a symbol" n))
-                           (make-symbol (symbol-name n))))
-                       bindings)))
-    `(flet ,(mapcar (lambda (a b)
-                      `(,a ,@(rest b)))
-                      anons bindings)
-       (macrolet ,(mapcar (lambda (a b)
-                            `(,(first b)
+  (multiple-value-bind (anons names arglists bodies) (parse-lf-bindings bindings)
+    `(flet ,(mapcar (lambda (anon name arglist body)
+                      (multiple-value-bind (decls forms) (parse-simple-body body)
+                        `(,anon ,arglist ,decls (block ,name ,@forms))))
+                    anons names arglists bodies)
+       (macrolet ,(mapcar (lambda (name anon)
+                            `(,name
                               (&environment environment &rest arguments)
-                              (expand-fex-call `(function ,',a) environment arguments)))
-                          anons bindings)
+                              (expand-fex-call `(function ,',anon) environment arguments)))
+                          names anons)
          ,@decls/forms))))
 
 #+(and LispWorks LW-Editor)
@@ -331,22 +338,16 @@ constantp can't tell are constant in delay forms."
 
 (defmacro labels/fex (bindings &body decls/forms)
   "Like LABELS but for fexes"
-  (let ((anons (mapcar (lambda (b)
-                         (unless (and (listp b) (>= (length b) 3))
-                           (simple-program-error "bad binding ~S" b))
-                         (let ((n (first b)))
-                           (unless (symbolp n)
-                             (simple-program-error "fex name ~S not a symbol" n))
-                           (make-symbol (symbol-name n))))
-                       bindings)))
-    `(macrolet ,(mapcar (lambda (a b)
-                          `(,(first b)
+  (multiple-value-bind (anons names arglists bodies) (parse-lf-bindings bindings)
+    `(macrolet ,(mapcar (lambda (name anon)
+                          `(,name
                             (&environment environment &rest arguments)
-                            (expand-fex-call `(function ,',a) environment arguments)))
-                        anons bindings)
-       (labels ,(mapcar (lambda (a b)
-                          `(,a ,@(rest b)))
-                        anons bindings)
+                            (expand-fex-call `(function ,',anon) environment arguments)))
+                        names anons)
+       (flet ,(mapcar (lambda (anon name arglist body)
+                        (multiple-value-bind (decls forms) (parse-simple-body body)
+                          `(,anon ,arglist ,decls (block ,name ,@forms))))
+                      anons names arglists bodies)
          ,@decls/forms))))
 
 #+(and LispWorks LW-Editor)
